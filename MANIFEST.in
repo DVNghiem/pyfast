@@ -1,4 +1,0 @@
-include requirements.txt
-include LICENSE
-recursive-include src *
-recursive-exclude * __pycache__
