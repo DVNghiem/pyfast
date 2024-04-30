@@ -2,6 +2,7 @@
 from src.core import HTTPEndpoint
 from starlette.requests import Request
 from src.core.cache import Cache, CacheTag
+from src.core.graphql import GraphQL
 from typing import Optional
 
 from pydantic import BaseModel
@@ -9,7 +10,6 @@ from pydantic import BaseModel
 
 class Test(BaseModel):
 	test1: Optional[str] = None
-	test2: Optional[str] = None
 
 
 class HealthCheck(HTTPEndpoint):
@@ -19,3 +19,10 @@ class HealthCheck(HTTPEndpoint):
 		Health Check
 		"""
 		return {'status': 'ok'}
+
+
+class HealthCheckGraphQL(GraphQL):
+	object_type = 'Query'
+
+	def resolve_health_check(self, request: Request, data: Test) -> str:
+		return 'health_check ok'

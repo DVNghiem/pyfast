@@ -1,0 +1,11 @@
+schema{
+    query: Query
+    mutation: Mutation
+}
+
+type Query{
+    health_check(test1: String): String
+}
+type Mutation{
+    hello: String
+}

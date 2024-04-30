@@ -5,7 +5,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.middleware import Middleware
 from starlette.exceptions import HTTPException
-from src.apis import routes
+from src.apis import routes, graphql_route
 from src.enum import ErrorCode
 from src.core.logger import DefaultFormatter
 from src.config import config
@@ -16,6 +16,11 @@ from src.core.cache import Cache, RedisBackend, CustomKeyMaker
 from starlette.schemas import SchemaGenerator
 from src.swagger import SwaggerUI
 from starlette.routing import Route
+from ariadne.asgi import GraphQL
+from ariadne import load_schema_from_path, snake_case_fallback_resolvers
+from src.core.graphql import make_executable_schema
+from graphql import GraphQLError
+
 import json
 import logging
 import contextlib
@@ -129,3 +134,13 @@ SwaggerUI(
 	css_url='https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.9.0/swagger-ui.css',
 	js_url='https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.9.0/swagger-ui-bundle.js',
 )
+
+
+def error_formatter(error: GraphQLError, debug: bool = False) -> dict:
+	return {'message': error.message, 'locations': error.locations, 'path': error.path}
+
+
+type_defs = load_schema_from_path('src/graphql')
+schema = make_executable_schema(type_defs, graphql_route, snake_case_fallback_resolvers)
+
+app.mount('/graphql', GraphQL(schema=schema, debug=True, error_formatter=error_formatter))
