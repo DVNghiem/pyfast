@@ -1,14 +1,25 @@
 # -*- coding: utf-8 -*-
 from functools import reduce
-from typing import Any, Dict, Generic, Optional, Type, TypeVar
+from typing import Any, Generic, Optional, Type, TypeVar, Dict
 from sqlalchemy import Select, select, and_, desc, asc, between
 from sqlalchemy.ext.asyncio import (
 	AsyncSession,
 )
-from sqlalchemy.orm import declarative_base
 from sqlalchemy.sql import func
+from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
+
+
+class Model(Base):  # type: ignore
+	__abstract__ = True
+	__table_args__ = {'extend_existing': True}
+
+	@property
+	def as_dict(self) -> Dict[str, Any]:
+		return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
+
 ModelType = TypeVar('ModelType', bound=Base)  # type: ignore
 
 
@@ -16,7 +27,7 @@ class PostgresRepository(Generic[ModelType]):
 	"""Base class for data repositories."""
 
 	def __init__(self, model: Type[ModelType], db_session: AsyncSession):
-		self.session = db_session
+		self.session = db_session  # type: ignore
 		self.model_class: Type[ModelType] = model
 
 	async def create(self, attributes: Optional[dict[str, Any]] = None) -> ModelType:
@@ -276,12 +287,3 @@ class PostgresRepository(Generic[ModelType]):
 		:return: The query with the given join.
 		"""
 		return getattr(self, '_join_' + join_)(query)
-
-
-class Model(Base):  # type: ignore
-	__abstract__ = True
-	__table_args__ = {'extend_existing': True}
-
-	@property
-	def as_dict(self) -> Dict:
-		return {c.name: getattr(self, c.name) for c in self.__table__.columns}

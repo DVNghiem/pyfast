@@ -6,6 +6,7 @@ annotated-types==0.6.0
 anyio==4.3.0
 APScheduler==3.10.4
 ariadne==0.23.0
+asgiref==3.8.1
 async-timeout==4.0.3
 asyncpg==0.29.0
 attrs==23.2.0
@@ -24,6 +25,7 @@ click-didyoumean==0.3.1
 click-plugins==1.1.1
 click-repl==0.3.0
 colorama==0.4.6
+Cython==3.0.10
 distlib==0.3.8
 exceptiongroup==1.2.0
 filelock==3.13.3

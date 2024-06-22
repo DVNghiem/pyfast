@@ -1,4 +1,4 @@
 # -*- coding: utf-8 -*-
-from .test import Test
+from .user import User
 
-__all__ = ['Test']
+__all__ = ['User']

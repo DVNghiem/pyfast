@@ -1,13 +1,11 @@
 # -*- coding: utf-8 -*-
-from src.apis.health_check import HealthCheck, HealthCheckGraphQL
-from src.core.route import RouteSwagger
 from starlette.routing import Route
+from src.core.route import RouteSwagger
+from src.apis.health_check import HealthCheck
+from src.apis.user import UserAPI
 
 
-routes = [
-	Route('/health_check', HealthCheck),
-]
+routes = [Route('/health_check', HealthCheck), RouteSwagger('/user', UserAPI, tags=['User'])]
 
-graphql_route = [HealthCheckGraphQL]
 
-__all__ = ['routes', 'RouteSwagger', 'graphql_route']
+__all__ = ['routes', 'RouteSwagger']

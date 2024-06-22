@@ -30,8 +30,12 @@ def reset_session_context(context: Token) -> None:
 
 
 engines = {
-	'writer': create_async_engine(config.POSTGRES_URL, pool_recycle=3600),
-	'reader': create_async_engine(config.POSTGRES_URL, pool_recycle=3600),
+	'writer': create_async_engine(
+		config.POSTGRES_URL, pool_recycle=360, pool_size=50, max_overflow=10
+	),
+	'reader': create_async_engine(
+		config.POSTGRES_URL, pool_recycle=360, pool_size=50, max_overflow=10
+	),
 }
 
 

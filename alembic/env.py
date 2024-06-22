@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 from src.config import config as conf
 from src.core.database.postgresql import Model
 
+
 load_dotenv()
 
 # this is the Alembic Config object, which provides

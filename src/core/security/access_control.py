@@ -16,7 +16,7 @@ class Principal:
 	value: str
 
 	def __repr__(self) -> str:
-		return f'{self.key}:{self.value}'
+		return str(f'{self.key}:{self.value}')
 
 	def __str__(self) -> str:
 		return self.__repr__()

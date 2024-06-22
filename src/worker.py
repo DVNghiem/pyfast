@@ -3,8 +3,8 @@ from typing import Any
 from celery import Celery
 from src.config import config
 from src.core.logger import logger
+from asgiref.sync import async_to_sync
 import json
-import asyncio
 
 
 class AsyncCelery(Celery):
@@ -23,10 +23,9 @@ class AsyncCelery(Celery):
 
 		class ContextTask(TaskBase):  # type: ignore
 			abstract = True
-			loop = asyncio.new_event_loop()
 
 			def _run(self, *args, **kwargs):
-				result = self.loop.run_until_complete(TaskBase.__call__(self, *args, **kwargs))
+				result = async_to_sync(TaskBase.__call__)(self, *args, **kwargs)
 				return result
 
 			def __call__(self, *args, **kwargs):
@@ -37,7 +36,7 @@ class AsyncCelery(Celery):
 
 def create_worker():
 	_celery = AsyncCelery(__name__, broker=config.BROKER_URL, backend=config.CELERY_RESULT_BACKEND)
-	_conf_json: dict = json.loads(config.model_dump_json(by_alias=True))
+	_conf_json = json.loads(config.model_dump_json(by_alias=True))  # type ignore
 	_celery.conf.update(_conf_json)
 	return _celery
 
