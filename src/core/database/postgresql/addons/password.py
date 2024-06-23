@@ -68,8 +68,7 @@ class Password(Mutable):
 
 
 class PasswordType(types.TypeDecorator):
-	impl = types.VARBINARY(1024)
-
+	impl = types.String
 	cache_ok = True
 
 	def __init__(self, max_length=None, **kwargs):
@@ -86,7 +85,7 @@ class PasswordType(types.TypeDecorator):
 		return 'hash' if hasattr(self.context, 'hash') else 'encrypt'
 
 	@property
-	def length(self):
+	def max_length(self):
 		"""Get column length."""
 		if self._max_length is None:
 			self._max_length = self.calculate_max_length()
@@ -111,16 +110,16 @@ class PasswordType(types.TypeDecorator):
 	def load_dialect_impl(self, dialect):
 		if dialect.name == 'postgresql':
 			# Use a BYTEA type for postgresql.
-			impl = postgresql.BYTEA(self.length)
+			impl = postgresql.BYTEA(self.max_length)
 		elif dialect.name == 'oracle':
 			# Use a RAW type for oracle.
-			impl = oracle.RAW(self.length)
+			impl = oracle.RAW(self.max_length)
 		elif dialect.name == 'sqlite':
 			# Use a BLOB type for sqlite
-			impl = sqlite.BLOB(self.length)
+			impl = sqlite.BLOB(self.max_length)
 		else:
 			# Use a VARBINARY for all other dialects.
-			impl = types.VARBINARY(self.length)
+			impl = types.VARBINARY(self.max_length)
 		return dialect.type_descriptor(impl)
 
 	def process_bind_param(self, value, dialect):

@@ -10,8 +10,6 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.sql.expression import Delete, Insert, Update
 from contextlib import asynccontextmanager
-
-
 from src.config import config
 
 session_context: ContextVar[str] = ContextVar('session_context')

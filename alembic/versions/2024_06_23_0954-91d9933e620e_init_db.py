@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """init db
 
-Revision ID: 62429be9b93e
+Revision ID: 91d9933e620e
 Revises:
-Create Date: 2024-06-22 10:13:46.572607
+Create Date: 2024-06-23 09:54:10.106888
 
 """
 
@@ -17,7 +17,7 @@ import src.core.database
 
 
 # revision identifiers, used by Alembic.
-revision: str = '62429be9b93e'
+revision: str = '91d9933e620e'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -35,6 +35,16 @@ def upgrade() -> None:
 		sa.Column(
 			'date_of_birth',
 			src.core.database.postgresql.addons.datetime.DatetimeType(),
+			nullable=True,
+		),
+		sa.Column(
+			'encrypt_1',
+			src.core.database.postgresql.addons.encrypted.StringEncryptType(),
+			nullable=True,
+		),
+		sa.Column(
+			'encrypt_2',
+			src.core.database.postgresql.addons.encrypted.LargeBinaryEncryptType(),
 			nullable=True,
 		),
 		sa.PrimaryKeyConstraint('id'),

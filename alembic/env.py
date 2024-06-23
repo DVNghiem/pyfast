@@ -10,6 +10,7 @@ from alembic import context  # type: ignore
 from dotenv import load_dotenv
 from src.config import config as conf
 from src.core.database.postgresql import Model
+from src.models import *  # noqa: F401, F403
 
 
 load_dotenv()

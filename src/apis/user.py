@@ -13,6 +13,8 @@ class UserAPI(HTTPEndpoint):
 				'name': 'John Doe',
 				'password': '123456',
 				'date_of_birth': datetime.now(),
+				'encrypt_1': 'hello==============================',
+				'encrypt_2': 'world',
 			}
 		)
 		return 'ok'
