@@ -11,7 +11,7 @@ from sqlalchemy import Column, Integer, String
 from cryptography.hazmat.primitives.padding import PKCS7
 import os
 
-aes_engine = AESEngine(secret_key=os.urandom(32), padding_class=PKCS7)
+aes_engine = AESEngine(secret_key=os.urandom(32), iv=os.urandom(16), padding_class=PKCS7)
 
 
 class User(Model):

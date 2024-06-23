@@ -21,33 +21,33 @@ class EDEngine(ABC):
 
 
 class AESEngine(EDEngine):
-	BLOCK_SIZE = 16
-
-	def __init__(self, secret_key: bytes, padding_class: typing.Type) -> None:
+	def __init__(self, secret_key: bytes, iv: bytes, padding_class: typing.Type) -> None:
 		super().__init__()
 		self.secret_key = secret_key
-		self.iv = secret_key[: self.BLOCK_SIZE]
+		self.iv = iv
 		self.cipher = Cipher(
 			algorithms.AES(self.secret_key), modes.CBC(self.iv), backend=default_backend()
 		)
-		self.padding_class = padding_class(self.BLOCK_SIZE)
+		self.padding = padding_class(128)
 
 	def encrypt(self, data: str) -> str:
 		bytes_data = data.encode('utf-8')
 		encryptor = self.cipher.encryptor()
-		padder = self.padding_class.padder()
-		padded_data = padder.update(bytes_data)
-		padded_data += padder.finalize()
-		enctyped_data = encryptor.update(padded_data)
+		padder = self.padding.padder()
+		padded_data = padder.update(bytes_data) + padder.finalize()
+		enctyped_data = encryptor.update(padded_data) + encryptor.finalize()
 		return b64encode(enctyped_data).decode('utf-8')
 
 	def decrypt(self, data: str) -> str:
 		_data = b64decode(data)
+		_len_iv = len(self.iv)
+		_ciphered_text = _data[_len_iv:]
+		unpadder = self.padding.unpadder()
 		decryptor = self.cipher.decryptor()
-		decrypted_data = decryptor.update(_data) + decryptor.finalize()
-		unpadder = self.padding_class.unpadder()
-		decrypted_data = unpadder.update(decrypted_data) + unpadder.finalize()
-		return decrypted_data.decode('utf-8')
+		padded_plain_text = decryptor.update(_ciphered_text) + decryptor.finalize()
+		decryptor = self.cipher.decryptor()
+		padded_plain_text = decryptor.update(_ciphered_text) + decryptor.finalize()
+		return unpadder.update(padded_plain_text) + unpadder.finalize()
 
 
 class StringEncryptType(TypeDecorator):
@@ -59,8 +59,9 @@ class StringEncryptType(TypeDecorator):
 
 		if not engine:
 			key = os.urandom(32)
+			iv = os.urandom(16)
 			padding_class = padding.PKCS7
-			self.engine = AESEngine(secret_key=key, padding_class=padding_class)
+			self.engine = AESEngine(secret_key=key, iv=iv, padding_class=padding_class)
 		else:
 			self.engine = engine  # type: ignore
 
