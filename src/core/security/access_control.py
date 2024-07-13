@@ -3,9 +3,6 @@ import functools
 from dataclasses import dataclass
 from typing import Any, Callable, List
 
-from starlette.exceptions import HTTPException
-from starlette.status import HTTP_403_FORBIDDEN
-
 Allow: str = 'allow'
 Deny: str = 'deny'
 
@@ -67,7 +64,7 @@ class AllowAll:
 		return self.__repr__()
 
 
-default_exception = HTTPException(status_code=HTTP_403_FORBIDDEN, detail='Forbidden')
+default_exception = Exception()
 
 
 class AccessControl:

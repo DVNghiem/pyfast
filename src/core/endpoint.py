@@ -1,11 +1,8 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
-from starlette.endpoints import HTTPEndpoint as StarletteHTTPEndpoint
-from starlette.requests import Request
-from starlette.responses import Response, JSONResponse
-from starlette.concurrency import run_in_threadpool
-from pydantic import BaseModel, ValidationError
 
+from robyn import Request, Response, Headers
+from pydantic import BaseModel, ValidationError
 from src.core.exception import BadRequest, BaseException
 from src.core.security import Authorization
 from pydash import get
@@ -17,7 +14,6 @@ import inspect
 import ujson  # type: ignore
 import traceback
 
-
 def is_async_callable(obj: typing.Any) -> bool:
 	while isinstance(obj, functools.partial):
 		obj = obj.func
@@ -26,10 +22,25 @@ def is_async_callable(obj: typing.Any) -> bool:
 		callable(obj) and asyncio.iscoroutinefunction(obj.__call__)
 	)
 
+async def run_in_threadpool(
+    func: typing.Callable, *args, **kwargs
+):
+    if kwargs:  # pragma: no cover
+        # run_sync doesn't accept 'kwargs', so bind them in here
+        func = functools.partial(func, **kwargs)
+    return await asyncio.to_thread.run_sync(func, *args)
 
-class HTTPEndpoint(StarletteHTTPEndpoint):
+
+class HTTPEndpoint:
 	def __init__(self, *args, **kwargs) -> None:
 		super().__init__(*args, **kwargs)
+
+	def method_not_allowed(self, request: Request) -> Response:
+		return Response(
+			description=ujson.dumps({'data': '', 'errors': 'Method Not Allowed', 'error_code': 405}),
+			headers=Headers({'Content-Type': 'application/json'}),
+			status_code=405,
+		)
 
 	async def get_input_handler(
 		self, signature: inspect.Signature, request: Request
@@ -52,11 +63,11 @@ class HTTPEndpoint(StarletteHTTPEndpoint):
 			if isinstance(ptype, type) and issubclass(ptype, BaseModel):
 				_data = {}
 				if name.lower() == 'query_params':
-					_data = request.query_params._dict
+					_data = request.query_params.to_dict()
 				elif name.lower() == 'path_params':
-					_data = request.path_params
+					_data = request.path_params.items()
 				elif name.lower() == 'form_data':
-					_data = await request.form()
+					_data = await request.form_data.items()
 					if not _data:
 						_data = await request.json()
 				else:
@@ -79,13 +90,12 @@ class HTTPEndpoint(StarletteHTTPEndpoint):
 					)
 			elif isinstance(ptype, type) and issubclass(ptype, Authorization):
 				_kwargs[name] = await ptype().validate(request)
-
 			elif name == 'request':
 				_kwargs[name] = request
 		return _kwargs
 
-	async def dispatch(self) -> None:
-		request = Request(self.scope, receive=self.receive)
+	async def dispatch(self, request: Request, global_dependencies, router_dependencies, *args, **kwargs) -> None:
+		print(args, kwargs, global_dependencies, router_dependencies)
 		handler_name = (
 			'get'
 			if request.method == 'HEAD' and not hasattr(self, 'head')
@@ -108,8 +118,9 @@ class HTTPEndpoint(StarletteHTTPEndpoint):
 			if not isinstance(response, Response):
 				if isinstance(_response_type, type) and issubclass(_response_type, BaseModel):
 					response = _response_type.model_validate(response).model_dump(mode='json')  # type: ignore
-				response = JSONResponse(
-					content={'data': response, 'errors': None, 'error_code': None},
+				response = Response(
+					description=ujson.dumps({'data': response, 'errors': None, 'error_code': None}),
+					headers=Headers({'Content-Type': 'application/json'}),
 					status_code=200,
 				)
 
@@ -126,5 +137,9 @@ class HTTPEndpoint(StarletteHTTPEndpoint):
 			if _status == 500:
 				sentry_sdk.capture_exception()
 				sentry_sdk.flush()
-			response = JSONResponse(content=_res, status_code=_status)
-		await response(self.scope, self.receive, self.send)
+			response = Response(
+				description=ujson.dumps(_res),
+				headers=Headers({'Content-Type': 'application/json'}),
+				status_code=_status,
+			)
+		return response
