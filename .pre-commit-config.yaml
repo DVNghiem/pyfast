@@ -35,13 +35,3 @@ repos:
         stages:
           - post-commit
           - push
-
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: 'v1.9.0'
-    hooks:
-      - id: mypy
-
-  # - repo: https://github.com/asottile/dead
-  #   rev: v1.5.2
-  #   hooks:
-  #     - id: dead

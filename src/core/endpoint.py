@@ -14,6 +14,7 @@ import inspect
 import ujson  # type: ignore
 import traceback
 
+
 def is_async_callable(obj: typing.Any) -> bool:
 	while isinstance(obj, functools.partial):
 		obj = obj.func
@@ -22,13 +23,12 @@ def is_async_callable(obj: typing.Any) -> bool:
 		callable(obj) and asyncio.iscoroutinefunction(obj.__call__)
 	)
 
-async def run_in_threadpool(
-    func: typing.Callable, *args, **kwargs
-):
-    if kwargs:  # pragma: no cover
-        # run_sync doesn't accept 'kwargs', so bind them in here
-        func = functools.partial(func, **kwargs)
-    return await asyncio.to_thread.run_sync(func, *args)
+
+async def run_in_threadpool(func: typing.Callable, *args, **kwargs):
+	if kwargs:  # pragma: no cover
+		# run_sync doesn't accept 'kwargs', so bind them in here
+		func = functools.partial(func, **kwargs)
+	return await asyncio.to_thread.run_sync(func, *args)
 
 
 class HTTPEndpoint:
@@ -37,7 +37,9 @@ class HTTPEndpoint:
 
 	def method_not_allowed(self, request: Request) -> Response:
 		return Response(
-			description=ujson.dumps({'data': '', 'errors': 'Method Not Allowed', 'error_code': 405}),
+			description=ujson.dumps(
+				{'data': '', 'errors': 'Method Not Allowed', 'error_code': 405}
+			),
 			headers=Headers({'Content-Type': 'application/json'}),
 			status_code=405,
 		)
@@ -94,8 +96,7 @@ class HTTPEndpoint:
 				_kwargs[name] = request
 		return _kwargs
 
-	async def dispatch(self, request: Request, global_dependencies, router_dependencies, *args, **kwargs) -> None:
-		print(args, kwargs, global_dependencies, router_dependencies)
+	async def dispatch(self, request: Request, *args, **kwargs) -> None:
 		handler_name = (
 			'get'
 			if request.method == 'HEAD' and not hasattr(self, 'head')
