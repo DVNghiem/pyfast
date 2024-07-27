@@ -1,37 +1,11 @@
 repos:
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.6.0
-    hooks:
-      - id: end-of-file-fixer
-      - id: trailing-whitespace
-      - id: check-added-large-files
-      - id: check-merge-conflict
-      - id: detect-private-key
-      - id: fix-encoding-pragma
-      - id: forbid-new-submodules
-      - id: name-tests-test
-
-  - repo: https://github.com/codespell-project/codespell
-    rev: v2.2.6
-    hooks:
-      - id: codespell
-        additional_dependencies: ["tomli>=2.0.1"]
-
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: "v0.3.5"
+    rev: v0.4.10
     hooks:
-      - id: ruff-format
       - id: ruff
-        args: ["--fix", "--unsafe-fixes", "--exit-non-zero-on-fix"]
-  - repo: meta
-    hooks:
-      - id: check-useless-excludes
+        args:
+          - --fix
+      - id: ruff-format
+ci:
+  autoupdate_schedule: weekly
 
-  - repo: https://github.com/commitizen-tools/commitizen
-    rev: v3.21.3
-    hooks:
-      - id: commitizen
-      - id: commitizen-branch
-        stages:
-          - post-commit
-          - push
