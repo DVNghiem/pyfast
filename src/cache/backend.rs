@@ -6,19 +6,19 @@ pub struct BaseBackend {}
 #[pymethods]
 impl BaseBackend {
     #[new]
-    fn new() -> Self {
+    pub fn new() -> Self {
         BaseBackend {}
     }
 
-    fn get(&self, _key: &str) {
+    pub fn get(&self, _key: String) -> PyResult<Option<String>> {
         unimplemented!()
     }
 
-    fn set(&self, _response: &str, _key: &str, _ttl: &str) {
+    pub fn set(&self, _response: String, _key: String, _ttl: String) {
         unimplemented!()
     }
 
-    fn delete_startswith(&self, _value: &str) {
+    pub fn delete_startswith(&self, _value: String) {
         unimplemented!()
     }
 }
