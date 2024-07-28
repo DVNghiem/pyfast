@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import pickle
-import ujson  # type: ignore
+import orjson
 
 from typing import Any
 import redis.asyncio as aioredis  # type: ignore
@@ -16,13 +16,13 @@ class RedisBackend(BaseBackend):
         if not result:
             return
         try:
-            return ujson.loads(result.decode("utf8"))
+            return orjson.loads(result.decode("utf8"))
         except UnicodeDecodeError:
             return pickle.loads(result)
 
     async def set(self, response: Any, key: str, ttl: int = 60) -> None:
         if isinstance(response, dict):
-            response = ujson.dumps(response)
+            response = orjson.dumps(response)
         elif isinstance(response, object):
             response = pickle.dumps(response)
 
