@@ -13,16 +13,6 @@ class EndpointInfo(typing.NamedTuple):
 
 
 class BaseSchemaGenerator:
-    def __init__(self) -> None:
-        self.http_methods = {
-            # HttpMethod.GET: "get",
-            # HttpMethod.POST: "post",
-            # HttpMethod.PUT: "put",
-            # HttpMethod.PATCH: "patch",
-            # HttpMethod.DELETE: "delete",
-            # HttpMethod.OPTIONS: "options"
-        }
-
     def get_schema(self, routes: list[Route]) -> dict[str, typing.Any]:
         raise NotImplementedError()  # pragma: no cover
 
