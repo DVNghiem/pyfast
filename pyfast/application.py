@@ -48,6 +48,7 @@ def schema():
 @app.get("/docs")
 def template_render():
     swagger = SwaggerUI(
+        title="Swagger",
         css_url="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.9.0/swagger-ui.css",
         js_url="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.9.0/swagger-ui-bundle.js",
     )
