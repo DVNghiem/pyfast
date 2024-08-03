@@ -16,3 +16,17 @@ class RedisBackend(BaseBackend):
     get: Callable[[str], Any]
     set: Callable[[Any, str, int], None]
     delete_startswith: Callable[[str], None]
+
+@dataclass
+class BaseSchemaGenerator:
+    remove_converter: Callable[[str], str]
+    parse_docstring: Callable[[Callable[..., Any]], str]
+
+@dataclass
+class SwaggerUI:
+    title: str
+    css_url: str
+    js_url: str
+
+    render_template: Callable[..., Any]
+    get_html_content: Callable[..., str]
