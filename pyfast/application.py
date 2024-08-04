@@ -6,6 +6,7 @@ from pyfast.core.openapi import SwaggerUI, SchemaGenerator
 from pyfast.core.route import RouteSwagger
 from pyfast.apis import routes
 from pyfast.core.cache import Cache, RedisBackend, CustomKeyMaker
+from pyfast.config import config
 
 import orjson
 
@@ -19,8 +20,11 @@ class Application(Robyn):
 
 
 app = Application(routes=routes)
-redis = RedisBackend(url="redis://localhost:6379/0")
-Cache.init(backend=redis, key_maker=CustomKeyMaker())
+
+redis = None
+if config.REDIS_URL:
+    redis = RedisBackend(url=config.REDIS_URL)
+    Cache.init(backend=redis, key_maker=CustomKeyMaker())
 
 
 @app.get("/schema")
