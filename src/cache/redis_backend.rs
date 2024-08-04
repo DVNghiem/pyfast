@@ -21,9 +21,8 @@ impl RedisBackend {
         Ok(response)
     }
 
-    pub fn set(&self, response: String, key: String, ttl: String) {
+    pub fn set(&self, response: String, key: String, ttl: i64) {
         let mut redis_conn: Connection = self.redis.get_connection().unwrap();
-        let ttl: i64 = ttl.parse().unwrap();
         let _: Result<String, redis::RedisError> = redis_conn.set(key.clone(), response);
         let _: Result<String, redis::RedisError> = redis_conn.expire(key, ttl);
     }
