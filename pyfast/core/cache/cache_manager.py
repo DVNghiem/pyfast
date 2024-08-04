@@ -4,6 +4,7 @@ from typing import Callable, Dict, Type
 
 from .base import BaseBackend, BaseKeyMaker
 from .cache_tag import CacheTag
+import orjson
 
 
 class CacheManager:
@@ -33,12 +34,12 @@ class CacheManager:
 
                 key = await self.key_maker.make(function=function, prefix=tag.value, identify_key=_identify_key)
 
-                cached_response = await self.backend.get(key=key)
+                cached_response = self.backend.get(key=key)
                 if cached_response:
-                    return cached_response
+                    return orjson.loads(cached_response)
 
                 response = await function(*args, **kwargs)
-                await self.backend.set(response=response, key=key, ttl=ttl)
+                self.backend.set(response=orjson.dumps(response).decode("utf-8"), key=key, ttl=ttl)
                 return response
 
             return __cached

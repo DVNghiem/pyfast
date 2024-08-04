@@ -26,7 +26,7 @@ async def run_in_threadpool(func: typing.Callable, *args, **kwargs):
     if kwargs:  # pragma: no cover
         # run_sync doesn't accept 'kwargs', so bind them in here
         func = functools.partial(func, **kwargs)
-    return await asyncio.to_thread.run_sync(func, *args)
+    return await asyncio.to_thread(func, *args)
 
 
 class HTTPEndpoint:
@@ -63,9 +63,9 @@ class HTTPEndpoint:
                 elif name.lower() == "path_params":
                     _data = request.path_params.items()
                 elif name.lower() == "form_data":
-                    _data = await request.form_data.items()
+                    _data = {k: v for k, v in request.form_data.items()}
                     if not _data:
-                        _data = await request.json()
+                        _data = request.json()
                 else:
                     raise BadRequest(msg="Backend Error: Invalid parameter type, must be query_params, path_params or form_data.")
                 try:

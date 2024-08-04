@@ -16,6 +16,7 @@ class Config(BaseSettings):
     PORT: Optional[int] = Field(default=5005)
     ACCESS_TOKEN: str = ""
     ALGORITHM: str = "HS256"
+    REDIS_URL: Optional[str] = None
 
 
 config = Config()
