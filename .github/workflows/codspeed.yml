@@ -41,7 +41,7 @@ jobs:
         run: rustup target add aarch64-apple-darwin
       - name: Setup Rust part of the project
         run: |
-          maturin build -i python --universal2 --out dist
+          maturin build -i python --release --target universal2-apple-darwin --out dist
           pip install --no-index --find-links=dist/ pyfast
 
       - name: Run benchmarks
