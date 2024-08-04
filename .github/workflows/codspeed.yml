@@ -36,13 +36,10 @@ jobs:
           poetry export --with test --with dev --without-hashes --output requirements.txt
           pip install -r requirements.txt
           pip install -e .
-      - name: Add macos target
-        if: matrix.os == 'macos'
-        run: rustup target add aarch64-apple-darwin
       - name: Setup Rust part of the project
         run: |
-          maturin build -i python --release --target universal2-apple-darwin --out dist
-          pip install --no-index --find-links=dist/ pyfast
+          maturin build -i python${{ matrix.python-version }} --release --out dist
+          pip install --force-reinstall dist/pyfast*.whl
 
       - name: Run benchmarks
         uses: CodSpeedHQ/action@v2
