@@ -42,7 +42,7 @@ jobs:
           pip install --force-reinstall dist/pyfast*.whl
 
       - name: Run benchmarks
-        uses: CodSpeedHQ/action@v2
+        uses: CodSpeedHQ/action@v3
         env:
           REDIS_URL: redis://redis:6379
         with:
