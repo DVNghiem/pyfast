@@ -1,12 +1,88 @@
 # -*- coding: utf-8 -*-
-from typing import Callable, Any, Dict, List, _UnionGenericAlias  # type: ignore
+from typing import Callable, Any, Dict, List, Union, get_origin, get_args
 from robyn.router import Router, Route
 from robyn import HttpMethod
 from pydantic import BaseModel
+from pydantic.fields import FieldInfo
+from enum import Enum
+
 from pyfast.core.security import Authorization
 
 import inspect
 import yaml  # type: ignore
+
+
+def get_field_type(field):
+    return field.outer_type_
+
+
+def pydantic_to_swagger(model: type[BaseModel] | dict):
+    if isinstance(model, dict):
+        # Handle the case when a dict is passed instead of a Pydantic model
+        schema = {}
+        for name, field_type in model.items():
+            schema[name] = _process_field(name, field_type)
+        return schema
+
+    schema = {
+        model.__name__: {
+            "type": "object",
+            "properties": {},
+        }
+    }
+
+    for name, field in model.model_fields.items():
+        schema[model.__name__]["properties"][name] = _process_field(name, field)
+
+    return schema
+
+
+def _process_field(name, field):
+    if isinstance(field, FieldInfo):
+        annotation = field.annotation
+    else:
+        annotation = field
+
+    property_schema = {}
+
+    if get_origin(annotation) is Union:
+        args = get_args(annotation)
+        if type(None) in args:
+            inner_type = next(arg for arg in args if arg is not type(None))
+            property_schema = _process_field(name, inner_type)
+            property_schema["nullable"] = True
+        else:
+            property_schema["oneOf"] = [_process_field(name, arg) for arg in args]
+    elif isinstance(annotation, type) and issubclass(annotation, Enum):
+        property_schema["type"] = "string"
+        property_schema["enum"] = [e.value for e in annotation]
+    elif annotation == int:  # noqa: E721
+        property_schema["type"] = "integer"
+    elif annotation == float:  # noqa: E721
+        property_schema["type"] = "number"
+    elif annotation == str:  # noqa: E721
+        property_schema["type"] = "string"
+    elif annotation == bool:  # noqa: E721
+        property_schema["type"] = "boolean"
+    elif annotation == list or get_origin(annotation) is list:  # noqa: E721
+        property_schema["type"] = "array"
+        if get_args(annotation):
+            item_type = get_args(annotation)[0]
+            property_schema["items"] = _process_field("item", item_type)
+        else:
+            property_schema["items"] = {}
+    elif annotation == dict or get_origin(annotation) is dict:  # noqa: E721
+        property_schema["type"] = "object"
+        if get_args(annotation):
+            key_type, value_type = get_args(annotation)
+            if key_type == str:  # noqa: E721
+                property_schema["additionalProperties"] = _process_field("value", value_type)
+    elif isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        return pydantic_to_swagger(annotation)
+    else:
+        property_schema["type"] = "object"  # fallback for complex types
+
+    return property_schema
 
 
 class RouteSwagger:
@@ -68,50 +144,16 @@ class RouteSwagger:
 
             if isinstance(item, type) and issubclass(item, BaseModel):
                 if key == "form_data":
-                    _docs["requestBody"] = {
-                        # type: ignore
-                        "content": {"multipart/form-data": {"schema": item.model_json_schema()}}
-                    }
+                    _docs["requestBody"] = {"content": {"application/json": {"schema": pydantic_to_swagger(item).get(item.__name__)}}}
 
                 if key == "query_params":
-                    _parameters = []
-                    for name, field in item.model_fields.items():  # type: ignore
-                        _type = field.annotation
-                        if isinstance(_type, _UnionGenericAlias):
-                            _type = _type.__args__[0]
-                        _parameters.append(
-                            {
-                                "name": name,
-                                "in": "query",
-                                "required": field.is_required(),
-                                "description": field.description,
-                                "example": field.examples,
-                                "schema": {
-                                    "type": self.mapping_type.get(_type, "string"),
-                                },
-                            }
-                        )
-                    _docs["parameters"] = _parameters
+                    _docs["parameters"] = [{"name": param, "in": "query", "schema": _process_field(param, field)} for param, field in item.model_fields.items()]
 
                 if key == "path_params":
-                    _parameters = []
-                    for name, field in item.model_fields.items():  # type: ignore
-                        _type = field.annotation
-                        if isinstance(_type, _UnionGenericAlias):
-                            _type = _type.__args__[0]
-                        _parameters.append(
-                            {
-                                "name": name,
-                                "in": "path",
-                                "required": self.mapping_type[field.is_required()],
-                                "description": field.description,
-                                "example": field.examples,
-                                "schema": {
-                                    "type": self.mapping_type.get(_type, "string"),
-                                },
-                            }
-                        )
-                    _docs["parameters"] = _parameters
+                    path_params = [
+                        {"name": param, "in": "path", "required": True, "schema": _process_field(param, field)} for param, field in item.model_fields.items()
+                    ]
+                    _docs.setdefault("parameters", []).extend(path_params)
 
         if isinstance(_response_type, type) and issubclass(_response_type, BaseModel):
             _docs["responses"] = {
@@ -123,14 +165,3 @@ class RouteSwagger:
             }
 
         return yaml.dump(_docs)
-
-    @property
-    def mapping_type(self) -> Dict:
-        return {
-            str: "string",
-            int: "integer",
-            True: "true",
-            False: "false",
-            float: "float",
-            bool: "boolean",
-        }
