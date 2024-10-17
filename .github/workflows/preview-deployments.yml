@@ -7,9 +7,11 @@ on:
   push:
     branches:
       - stag
+      - main
   pull_request:
     branches:
       - stag
+      - main
 
 jobs:
   macos:
