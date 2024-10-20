@@ -53,3 +53,14 @@ class Application(Robyn):
             )
             template = swagger.render_template()
             return template
+
+    def add_middleware(self, middleware):
+        setattr(middleware, "app", self)
+        before_request = getattr(middleware, "before_request", None)
+        after_request = getattr(middleware, "after_request", None)
+        endpoint = getattr(middleware, "endpoint", None)
+        if before_request:
+            self.before_request(endpoint=endpoint)(before_request)
+        if after_request:
+            self.after_request(endpoint=endpoint)(after_request)
+        return self

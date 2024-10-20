@@ -3,6 +3,7 @@ from __future__ import annotations
 import typing
 from urllib.parse import quote
 from robyn import Response as RobynResponse, Headers
+import orjson
 
 
 class Response:
@@ -27,7 +28,9 @@ class Response:
             return b""
         if isinstance(content, (bytes, memoryview)):
             return content
-        return content.encode(self.charset)  # type: ignore
+        if isinstance(content, str):
+            return content.encode(self.charset)
+        return orjson.dumps(content)  # type: ignore
 
     def init_headers(self, headers: typing.Mapping[str, str] | None = None) -> None:
         if headers is None:
