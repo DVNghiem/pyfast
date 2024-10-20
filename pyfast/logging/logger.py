@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
+import logging
 from typing import Optional, Literal
 from copy import copy
-import logging
 import click
 import sys
 
@@ -61,13 +61,31 @@ class DefaultFormatter(ColourizedFormatter):
         return sys.stderr.isatty()
 
 
-logger = logging.getLogger("__main__")
-logger.setLevel(logging.DEBUG)
-formatter = DefaultFormatter(
-    fmt="%(levelprefix)s %(asctime)s [%(process)s] [%(filename)s:%(lineno)d] %(message)s",
-    use_colors=True,
-    datefmt="%d-%m-%Y %H:%M:%S",
-)
-handler = logging.StreamHandler()
-handler.setFormatter(formatter)
-logger.addHandler(handler)
+def create_logger(name) -> logging.Logger:
+    logger = logging.getLogger(name)
+    logger.setLevel(logging.DEBUG)
+    formatter = DefaultFormatter(
+        fmt="%(levelprefix)s %(asctime)s [%(process)s] [%(filename)s:%(lineno)d] %(message)s",
+        use_colors=True,
+        datefmt="%d-%m-%Y %H:%M:%S",
+    )
+    handler = logging.StreamHandler()
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    return logger
+
+
+def get_loggers_by_prefix(prefix):
+    return [name for name in logging.root.manager.loggerDict.keys() if name.startswith(prefix)]
+
+
+def reset_logger() -> None:
+    robyn_loggers = get_loggers_by_prefix("robyn")
+    actix_loggers = ["actix_server.builder", "actix_server.worker", "actix_server.server", "actix_server.accept"]
+
+    for name in [*robyn_loggers, *actix_loggers]:
+        logger = create_logger(name)
+        logger.propagate = False
+
+
+logger = create_logger("pyfast")

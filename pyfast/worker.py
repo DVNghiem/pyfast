@@ -2,7 +2,6 @@
 from typing import Any
 from celery import Celery
 from pyfast.config import config
-from pyfast.core.logger import logger
 from asgiref.sync import async_to_sync
 import json
 
@@ -11,7 +10,6 @@ class AsyncCelery(Celery):
     def __new__(cls, *args, **kwargs) -> Any:
         if not hasattr(cls, "instance") or not cls.instance:  # type: ignore
             cls.instance = super().__new__(cls)
-        logger.debug("Broker url: {}".format(config.BROKER_URL))
         return cls.instance
 
     def __init__(self, *args, **kwargs) -> None:

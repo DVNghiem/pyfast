@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from robyn import Request, Response, Headers
 from pydantic import BaseModel, ValidationError
-from pyfast.core.exception import BadRequest, BaseException
-from pyfast.core.security import Authorization
+from pyfast.exceptions import BadRequest, BaseException
+from pyfast.auth.authorization import Authorization
 from pydash import get
 import sentry_sdk
 import typing

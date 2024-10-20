@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 from typing import Callable, Any, Dict, List, Union, get_origin, get_args
-from robyn.router import Router, Route
+from robyn.router import Router as RobynRouter, Route
 from robyn import HttpMethod
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 from enum import Enum
 
-from pyfast.core.security import Authorization
+from pyfast.auth.authorization import Authorization
 
 import inspect
 import yaml  # type: ignore
@@ -85,7 +85,7 @@ def _process_field(name, field):
     return property_schema
 
 
-class RouteSwagger:
+class Router:
     def __init__(
         self,
         path: str,
@@ -109,7 +109,7 @@ class RouteSwagger:
         }
 
     def __call__(self, app, *args: Any, **kwds: Any) -> Any:
-        router = Router()
+        router = RobynRouter()
         for name, func in self.endpoint.__dict__.items():
             if name.upper() in self.http_methods:
                 _signature = inspect.signature(func)
