@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-from robyn import Request, Response, Headers
+from robyn import Request, Response
 from pydantic import BaseModel, ValidationError
 from pyfast.exceptions import BadRequest, BaseException
 from pyfast.auth.authorization import Authorization
+from pyfast.response import JSONResponse
 from pydash import get
 import sentry_sdk
 import typing
@@ -34,9 +35,8 @@ class HTTPEndpoint:
         super().__init__(*args, **kwargs)
 
     def method_not_allowed(self, request: Request) -> Response:
-        return Response(
+        return JSONResponse(
             description=orjson.dumps({"data": "", "errors": "Method Not Allowed", "error_code": 405}),
-            headers=Headers({"Content-Type": "application/json"}),
             status_code=405,
         )
 
@@ -107,9 +107,8 @@ class HTTPEndpoint:
             if not isinstance(response, Response):
                 if isinstance(_response_type, type) and issubclass(_response_type, BaseModel):
                     response = _response_type.model_validate(response).model_dump(mode="json")  # type: ignore
-                response = Response(
-                    description=orjson.dumps({"data": response, "errors": None, "error_code": None}),
-                    headers=Headers({"Content-Type": "application/json"}),
+                response = JSONResponse(
+                    content=orjson.dumps({"data": response, "errors": None, "error_code": None}),
                     status_code=200,
                 )
 
@@ -126,9 +125,8 @@ class HTTPEndpoint:
             if _status == 500:
                 sentry_sdk.capture_exception()
                 sentry_sdk.flush()
-            response = Response(
+            response = JSONResponse(
                 description=orjson.dumps(_res),
-                headers=Headers({"Content-Type": "application/json"}),
                 status_code=_status,
             )
         return response
