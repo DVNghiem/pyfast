@@ -6,6 +6,7 @@ import time
 from typing import List
 import platform
 import pytest
+import pathlib
 
 
 def spawn_process(command: List[str]) -> subprocess.Popen:
@@ -34,7 +35,9 @@ def start_server(domain: str, port: int, is_dev: bool = False) -> subprocess.Pop
     Call this method to wait for the server to start
     """
     # Start the server
-    command = ["python3", "main.py"]
+    current_file_path = pathlib.Path(__file__).parent.resolve()
+    server = os.path.join(current_file_path, "./server.py")
+    command = ["python3", server]
     if is_dev:
         command.append("--dev")
     process = spawn_process(command)
