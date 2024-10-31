@@ -34,6 +34,8 @@ sentry-sdk = "^2.11.0"
 pydantic-settings = "^2.3.4"
 celery = "^5.4.0"
 asgiref = "^3.8.1"
+psycopg = "^3.2.3"
+psycopg2-binary = "^2.9.10"
 
 [tool.poetry.group.test.dependencies]
 pytest = "7.2.1"

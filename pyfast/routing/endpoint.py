@@ -40,7 +40,7 @@ class HTTPEndpoint:
             status_code=405,
         )
 
-    async def get_input_handler(self, signature: inspect.Signature, request: Request) -> typing.Dict[str, typing.Any]:
+    async def get_input_handler(self, signature: inspect.Signature, request: Request, global_dependencies, router_dependencies) -> typing.Dict[str, typing.Any]:
         """
         This function will parse the request data and return the kwargs for the handler
 
@@ -86,9 +86,13 @@ class HTTPEndpoint:
                 _kwargs[name] = await ptype().validate(request)
             elif name == "request":
                 _kwargs[name] = request
+            elif name == "global_dependencies":
+                _kwargs[name] = global_dependencies
+            elif name == "router_dependencies":
+                _kwargs[name] = router_dependencies
         return _kwargs
 
-    async def dispatch(self, request: Request, *args, **kwargs) -> None:
+    async def dispatch(self, request: Request, global_dependencies, router_dependencies, *args, **kwargs) -> None:
         handler_name = "get" if request.method == "HEAD" and not hasattr(self, "head") else request.method.lower()
         handler: typing.Callable[[Request], typing.Any] = getattr(  # type: ignore
             self, handler_name, self.method_not_allowed
@@ -97,8 +101,7 @@ class HTTPEndpoint:
             is_async = is_async_callable(handler)
             signature = inspect.signature(handler)
             _response_type = signature.return_annotation
-
-            _kwargs = await self.get_input_handler(signature, request)
+            _kwargs = await self.get_input_handler(signature, request, global_dependencies, router_dependencies)
 
             if is_async:
                 response = await handler(**_kwargs)  # type: ignore
@@ -126,7 +129,7 @@ class HTTPEndpoint:
                 sentry_sdk.capture_exception()
                 sentry_sdk.flush()
             response = JSONResponse(
-                description=orjson.dumps(_res),
+                content=orjson.dumps(_res),
                 status_code=_status,
             )
         return response
