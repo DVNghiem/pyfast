@@ -12,6 +12,21 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dynamic = ["version"]
+dependencies=[
+    "robyn==0.58.0",
+    "sqlalchemy[asyncio] == 2.0.31",
+    "pydantic==2.8.2",
+    "passlib==1.7.4",
+    "pyjwt==2.8.0",
+    "pydash==8.0.3",
+    "sentry-sdk==2.11.0",
+    "pydantic-settings==2.3.4",
+    "celery==5.4.0",
+    "asgiref==3.8.1",
+    "psycopg==3.2.3",
+    "psycopg2-binary==2.9.10",
+    "pyyaml == 6.0.2",
+]
 [tool.maturin]
 features = ["pyo3/extension-module"]
 module-name = "pyfast"
@@ -36,6 +51,8 @@ celery = "^5.4.0"
 asgiref = "^3.8.1"
 psycopg = "^3.2.3"
 psycopg2-binary = "^2.9.10"
+maturin = "^1.7.4"
+pyyaml = "^6.0.2"
 
 [tool.poetry.group.test.dependencies]
 pytest = "7.2.1"
