@@ -36,7 +36,7 @@ def start_server(domain: str, port: int, is_dev: bool = False) -> subprocess.Pop
     """
     # Start the server
     current_file_path = pathlib.Path(__file__).parent.resolve()
-    server = os.path.join(current_file_path, "./server.py")
+    server = os.path.join(current_file_path, "server.py")
     command = ["python3", server]
     if is_dev:
         command.append("--dev")
@@ -48,9 +48,9 @@ def start_server(domain: str, port: int, is_dev: bool = False) -> subprocess.Pop
     while True:
         current_time = time.time()
         if current_time - start_time > timeout:
-            # Robyn didn't start correctly before timeout, kill the process and exit with an exception
+            # didn't start correctly before timeout, kill the process and exit with an exception
             kill_process(process)
-            raise ConnectionError("Could not reach Robyn server")
+            raise ConnectionError("Could not reach server")
         try:
             sock = socket.create_connection((domain, port), timeout=5)
             sock.close()
