@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 from pyfast import Application, Request, Response, jsonify
 from pyfast.routing import HTTPEndpoint, Router
+from pyfast.response import JSONResponse, HTMLResponse, PlainTextResponse, RedirectResponse
+
 from pydantic import BaseModel
 
 __base_route__ = "/benchmark"
@@ -8,9 +10,14 @@ __base_route__ = "/benchmark"
 MESSAGE = "Hello World!"
 
 
+class DefaultRoute(HTTPEndpoint):
+    def post(self, request: Request):
+        return JSONResponse({"message": MESSAGE})
+
+
 class RequestFile(HTTPEndpoint):
     def post(self, request: Request):
-        print(request)
+        print(request.files)
         return Response(
             status_code=200,
             description="multipart form data",
@@ -54,17 +61,41 @@ class ValidateModel(HTTPEndpoint):
         return ModelResponse(message=MESSAGE)
 
 
+# response type
+class TestJsonResponse(HTTPEndpoint):
+    def post(self, request: Request):
+        return JSONResponse({"message": MESSAGE})
+
+
+class TestHtmlResponse(HTTPEndpoint):
+    def post(self, request: Request):
+        return HTMLResponse("<h1>Hello World!</h1>")
+
+
+class TestPlainTextResponse(HTTPEndpoint):
+    def post(self, request: Request):
+        return PlainTextResponse("Hello World!")
+
+
+class TestRedirectResponse(HTTPEndpoint):
+    def post(self, request: Request):
+        return RedirectResponse("/benchmark/default")
+
+
 routes = [
+    Router(f"{__base_route__}/default", DefaultRoute),
     Router(f"{__base_route__}/file", RequestFile),
     Router(f"{__base_route__}/sync", SyncQuery),
     Router(f"{__base_route__}/async", AsyncQuery),
     Router(f"{__base_route__}/response", ResponseObject),
     Router(f"{__base_route__}/validate", ValidateModel),
+    Router(f"{__base_route__}/json", TestJsonResponse),
+    Router(f"{__base_route__}/html", TestHtmlResponse),
+    Router(f"{__base_route__}/plain_text", TestPlainTextResponse),
+    Router(f"{__base_route__}/redirect", TestRedirectResponse),
 ]
 
 app = Application(routes=routes)
-
-redis = None
 
 
 # --- Global ---
@@ -82,9 +113,6 @@ def global_after_request(response: Response):
 
 @app.get("/sync/global/middlewares")
 def sync_global_middlewares(request: Request):
-    print(request.headers)
-    print(request.headers.get("txt"))
-    print(request.headers["txt"])
     assert "global_before" in request.headers
     assert request.headers.get("global_before") == "global_before_request"
     return "sync global middlewares"

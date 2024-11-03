@@ -32,7 +32,7 @@ module-name = "pyfast"
 
 [tool.poetry]
 name = "pyfast"
-version = "1.0.0"
+version = "0.0.1"
 description = "A Fast Async Python backend with a Rust runtime."
 authors = ["Martin Dang <vannghiem848@gmail.com>"]
 
