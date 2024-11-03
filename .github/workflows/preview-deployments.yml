@@ -125,7 +125,7 @@ jobs:
             --volume "${PWD}/dist:/artifacts"
           install: |
             apt update -y
-            apt install -y gcc g++ build-essential musl-dev python${{ matrix.python.version }}-dev libffi-dev # this is needed for psutil
+            apt install -y gcc g++ build-essential musl-dev python${{ matrix.python.version }} python${{ matrix.python.version }}-dev libffi-dev # this is needed for psutil
             apt install -y --no-install-recommends software-properties-common
             add-apt-repository ppa:deadsnakes/ppa
             PYTHON=python${{ matrix.python.version }}
@@ -138,4 +138,4 @@ jobs:
             source venv/bin/activate
             pip install --upgrade pip setuptools wheel
             pip install --force-reinstall dist/pyfast*.whl
-            cd ~ && python -c 'import pyfast'
+            cd ~ && $PYTHON -c 'import pyfast'
