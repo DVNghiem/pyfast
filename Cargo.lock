@@ -372,7 +372,7 @@ dependencies = [
 
 [[package]]
 name = "pyfast"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "pyo3",
  "pyo3-asyncio",

@@ -8,20 +8,28 @@ class BaseException(Exception):
         super().__init__(*args)
         self.msg = msg
         self.status = 400
-        self.errors: list = None
-        self.error_code = ErrorCode.UNKNOWN_ERROR.name
+        self.error_code = ErrorCode.UNKNOWN_ERROR
 
 
 class BadRequest(BaseException):
     def __init__(
         self,
         msg: str = "Bad request",
-        errors: list = None,
-        error_code: str = ErrorCode.BAD_REQUEST.name,
+        error_code: str = ErrorCode.BAD_REQUEST,
         *args: Any,
     ) -> None:
         super().__init__(msg, *args)
-        self.errors = errors
+        self.error_code = error_code
+
+
+class ValidationError(BaseException):
+    def __init__(
+        self,
+        msg: str = "Validation error",
+        error_code: str = ErrorCode.VALIDATION_ERROR,
+        *args: Any,
+    ) -> None:
+        super().__init__(msg, *args)
         self.error_code = error_code
 
 
@@ -29,12 +37,10 @@ class Forbidden(BaseException):
     def __init__(
         self,
         msg: str = "Forbidden",
-        errors: list = None,
-        error_code: str = ErrorCode.FORBIDDEN.name,
+        error_code: str = ErrorCode.FORBIDDEN,
         *args: Any,
     ) -> None:
         super().__init__(msg, *args)
-        self.errors = errors
         self.status = 403
         self.error_code = error_code
 
@@ -43,12 +49,10 @@ class NotFound(BaseException):
     def __init__(
         self,
         msg: str = "NotFound",
-        errors: list = None,
-        error_code: str = ErrorCode.NOT_FOUND.name,
+        error_code: str = ErrorCode.NOT_FOUND,
         *args: Any,
     ) -> None:
         super().__init__(msg, *args)
-        self.errors = errors
         self.status = 404
         self.error_code = error_code
 
@@ -57,7 +61,7 @@ class MethodNotAllow(BaseException):
     def __init__(
         self,
         msg: str = "Method not allow",
-        error_code: str = ErrorCode.METHOD_NOT_ALLOW.name,
+        error_code: str = ErrorCode.METHOD_NOT_ALLOW,
         *args: Any,
     ) -> None:
         super().__init__(msg, *args)
@@ -65,30 +69,14 @@ class MethodNotAllow(BaseException):
         self.error_code = error_code
 
 
-class ConflictError(BaseException):
-    def __init__(
-        self,
-        msg: str = "Conflict",
-        errors: list = None,
-        error_code: str = ErrorCode.CONFLICT.name,
-        *args: Any,
-    ) -> None:
-        super().__init__(msg, *args)
-        self.errors = errors
-        self.status = 409
-        self.error_code = error_code
-
-
 class InternalServer(BaseException):
     def __init__(
         self,
         msg: str = "Internal server error",
-        errors: list = None,
-        error_code: str = ErrorCode.SERVER_ERROR.name,
+        error_code: str = ErrorCode.SERVER_ERROR,
         *args: Any,
     ) -> None:
         super().__init__(msg, *args)
-        self.errors = errors
         self.status = 500
         self.error_code = error_code
 
@@ -97,25 +85,9 @@ class Unauthorized(BaseException):
     def __init__(
         self,
         msg: str = "Unauthorized",
-        errors: list = None,
-        error_code: str = ErrorCode.UNAUTHORIZED.name,
+        error_code: str = ErrorCode.UNAUTHORIZED,
         *args: Any,
     ) -> None:
         super().__init__(msg, *args)
-        self.errors = errors
         self.status = 401
-        self.error_code = error_code
-
-
-class SignatureVerifyFail(BaseException):
-    def __init__(
-        self,
-        msg: str = "Signature verify fail",
-        errors: list = None,
-        error_code: str = ErrorCode.SIGNATURE_VERIFY_FAIL.name,
-        *args: Any,
-    ) -> None:
-        super().__init__(msg, *args)
-        self.errors = errors
-        self.status = 409
         self.error_code = error_code

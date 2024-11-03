@@ -67,30 +67,3 @@ def session():
     process = start_server(domain, port)
     yield
     kill_process(process)
-
-
-@pytest.fixture(scope="session")
-def default_session():
-    domain = "127.0.0.1"
-    port = 5005
-    process = start_server(domain, port)
-    yield
-    kill_process(process)
-
-
-@pytest.fixture(scope="session")
-def global_session():
-    domain = "127.0.0.1"
-    port = 5005
-    process = start_server(domain, port)
-    yield
-    kill_process(process)
-
-
-@pytest.fixture(scope="session")
-def test_session():
-    domain = "127.0.0.1"
-    port = 5005
-    process = start_server(domain, port, is_dev=True)
-    yield
-    kill_process(process)

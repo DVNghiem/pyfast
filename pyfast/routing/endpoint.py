@@ -3,11 +3,10 @@ from __future__ import annotations
 
 from robyn import Request, Response
 from pydantic import BaseModel, ValidationError
-from pyfast.exceptions import BadRequest, BaseException
+from pyfast.exceptions import BadRequest, BaseException, ValidationError as PyfastValidationError
 from pyfast.auth.authorization import Authorization
 from pyfast.response import JSONResponse
 from pydash import get
-import sentry_sdk
 import typing
 import asyncio
 import functools
@@ -66,14 +65,16 @@ class InputHandler:
             return model_class(**data)
         except ValidationError as e:
             invalid_fields = orjson.loads(e.json())
-            raise BadRequest(
-                errors=[
-                    {
-                        "field": get(item, "loc")[0],
-                        "msg": get(item, "msg"),
-                    }
-                    for item in invalid_fields
-                ]
+            raise PyfastValidationError(
+                msg=orjson.dumps(
+                    [
+                        {
+                            "field": get(item, "loc")[0],
+                            "msg": get(item, "msg"),
+                        }
+                        for item in invalid_fields
+                    ]
+                ).decode("utf-8"),
             )
 
     async def handle_special_params(self, param_name: str) -> typing.Any:
@@ -152,23 +153,20 @@ class HTTPEndpoint:
                 if isinstance(_response_type, type) and issubclass(_response_type, BaseModel):
                     response = _response_type.model_validate(response).model_dump(mode="json")  # type: ignore
                 response = JSONResponse(
-                    content=orjson.dumps({"data": response, "errors": None, "error_code": None}),
+                    content=orjson.dumps({"message": response, "error_code": None}),
                     status_code=200,
                 )
 
         except Exception as e:
-            _res: typing.Dict = {"data": ""}
+            _res: typing.Dict = {"message": "", "error_code": "UNKNOWN_ERROR"}
             if isinstance(e, BaseException):
-                _res["errors"] = e.errors
                 _res["error_code"] = e.error_code
+                _res["message"] = e.msg
                 _status = e.status
             else:
                 traceback.print_exc()
-                _res["errors"] = str(e)
+                _res["message"] = str(e)
                 _status = 400
-            if _status == 500:
-                sentry_sdk.capture_exception()
-                sentry_sdk.flush()
             response = JSONResponse(
                 content=orjson.dumps(_res),
                 status_code=_status,
