@@ -25,7 +25,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install bandit safety gitguardian-scanner
+          pip install bandit safety
           
       # Bandit - Scan for security vulnerabilities in Python code
       - name: Run Bandit
@@ -62,7 +62,9 @@ jobs:
           
       # GitGuardian - Scan for secrets
       - name: GitGuardian scan
-        uses: GitGuardian/ggshield-action@master
+        uses: GitGuardian/ggshield/actions/secret@v1.33.0
+        with:
+          fetch-depth: 0
         env:
           GITHUB_PUSH_BEFORE: ${{ github.event.before }}
           GITHUB_PUSH_BASE_SHA: ${{ github.event.base }}
