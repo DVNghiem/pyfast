@@ -64,7 +64,7 @@ class Password(Mutable):
         return False
 
     def __ne__(self, value):
-        return not (self == value)
+        return self != value
 
 
 class PasswordType(types.TypeDecorator):
@@ -74,7 +74,7 @@ class PasswordType(types.TypeDecorator):
     def __init__(self, max_length=None, **kwargs):
         # Fail if passlib is not found.
         if passlib is None:
-            raise Exception("'passlib' is required to use 'PasswordType'")
+            raise ImportError("'passlib' is required to use 'PasswordType'")
 
         # Construct the passlib crypt context.
         self.context = LazyCryptContext(**kwargs)

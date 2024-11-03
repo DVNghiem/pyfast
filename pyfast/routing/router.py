@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-from typing import Callable, Any, Dict, List, Union, get_origin, get_args
-from robyn.router import Router as RobynRouter, Route
+from typing import Callable, Any, Dict, List, Union, Type, get_origin, get_args
+from robyn.router import Router as RobynRouter
 from robyn import HttpMethod
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
@@ -37,52 +37,102 @@ def pydantic_to_swagger(model: type[BaseModel] | dict):
     return schema
 
 
-def _process_field(name, field):
-    if isinstance(field, FieldInfo):
-        annotation = field.annotation
-    else:
-        annotation = field
-
-    property_schema = {}
-
-    if get_origin(annotation) is Union:
-        args = get_args(annotation)
+class SchemaProcessor:
+    @staticmethod
+    def process_union(args: tuple) -> Dict[str, Any]:
+        """Process Union types"""
         if type(None) in args:
             inner_type = next(arg for arg in args if arg is not type(None))
-            property_schema = _process_field(name, inner_type)
-            property_schema["nullable"] = True
-        else:
-            property_schema["oneOf"] = [_process_field(name, arg) for arg in args]
-    elif isinstance(annotation, type) and issubclass(annotation, Enum):
-        property_schema["type"] = "string"
-        property_schema["enum"] = [e.value for e in annotation]
-    elif annotation == int:  # noqa: E721
-        property_schema["type"] = "integer"
-    elif annotation == float:  # noqa: E721
-        property_schema["type"] = "number"
-    elif annotation == str:  # noqa: E721
-        property_schema["type"] = "string"
-    elif annotation == bool:  # noqa: E721
-        property_schema["type"] = "boolean"
-    elif annotation == list or get_origin(annotation) is list:  # noqa: E721
-        property_schema["type"] = "array"
-        if get_args(annotation):
-            item_type = get_args(annotation)[0]
-            property_schema["items"] = _process_field("item", item_type)
-        else:
-            property_schema["items"] = {}
-    elif annotation == dict or get_origin(annotation) is dict:  # noqa: E721
-        property_schema["type"] = "object"
-        if get_args(annotation):
-            key_type, value_type = get_args(annotation)
-            if key_type == str:  # noqa: E721
-                property_schema["additionalProperties"] = _process_field("value", value_type)
-    elif isinstance(annotation, type) and issubclass(annotation, BaseModel):
-        return pydantic_to_swagger(annotation)
-    else:
-        property_schema["type"] = "object"  # fallback for complex types
+            schema = SchemaProcessor._process_field("", inner_type)
+            schema["nullable"] = True
+            return schema
+        return {"oneOf": [SchemaProcessor._process_field("", arg) for arg in args]}
 
-    return property_schema
+    @staticmethod
+    def process_enum(annotation: Type[Enum]) -> Dict[str, Any]:
+        """Process Enum types"""
+        return {"type": "string", "enum": [e.value for e in annotation]}
+
+    @staticmethod
+    def process_primitive(annotation: type) -> Dict[str, str]:
+        """Process primitive types"""
+        type_mapping = {int: "integer", float: "number", str: "string", bool: "boolean"}
+        return {"type": type_mapping.get(annotation, "object")}
+
+    @staticmethod
+    def process_list(annotation: type) -> Dict[str, Any]:
+        """Process list types"""
+        schema = {"type": "array"}
+
+        args = get_args(annotation)
+        if args:
+            item_type = args[0]
+            schema["items"] = SchemaProcessor._process_field("item", item_type)
+        else:
+            schema["items"] = {}
+        return schema
+
+    @staticmethod
+    def process_dict(annotation: type) -> Dict[str, Any]:
+        """Process dict types"""
+        schema = {"type": "object"}
+
+        args = get_args(annotation)
+        if args:
+            key_type, value_type = args
+            if key_type == str:  # noqa: E721
+                schema["additionalProperties"] = SchemaProcessor._process_field("value", value_type)
+        return schema
+
+    @classmethod
+    def _process_field(cls, name: str, field: Any) -> Dict[str, Any]:
+        """Process a single field"""
+        if isinstance(field, FieldInfo):
+            annotation = field.annotation
+        else:
+            annotation = field
+
+        # Process Union types
+        origin = get_origin(annotation)
+        if origin is Union:
+            return cls.process_union(get_args(annotation))
+
+        # Process Enum types
+        if isinstance(annotation, type) and issubclass(annotation, Enum):
+            return cls.process_enum(annotation)
+
+        # Process primitive types
+        if annotation in {int, float, str, bool}:
+            return cls.process_primitive(annotation)
+
+        # Process list types
+        if annotation == list or origin is list:  # noqa: E721
+            return cls.process_list(annotation)
+
+        # Process dict types
+        if annotation == dict or origin is dict:  # noqa: E721
+            return cls.process_dict(annotation)
+
+        # Process Pydantic models
+        if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+            return pydantic_to_swagger(annotation)
+
+        # Fallback for complex types
+        return {"type": "object"}
+
+
+def _process_field(name: str, field: Any) -> Dict[str, Any]:
+    """
+    Process a field and return its schema representation
+
+    Args:
+        name: Field name
+        field: Field type or FieldInfo object
+
+    Returns:
+        Dictionary representing the JSON schema for the field
+    """
+    return SchemaProcessor._process_field(name, field)
 
 
 class Router:
@@ -92,11 +142,11 @@ class Router:
         endpoint: Callable[..., Any],
         *,
         name: str | None = None,
-        tags: List[str] = ["Default"],
+        tags: List[str] | None = None,
     ) -> None:
         self.path = path
         self.endpoint = endpoint
-        self.tags = tags
+        self.tags = tags or ["Default"]
 
         self.http_methods = {
             "GET": HttpMethod.GET,
@@ -127,9 +177,6 @@ class Router:
                 )
 
         return router
-
-    def get_routes(self) -> List[Route]:
-        return self.router.get_routes()
 
     def swagger_generate(self, signature: inspect.Signature, summary: str = "Document API") -> str:
         _inputs = signature.parameters.values()

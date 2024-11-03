@@ -107,8 +107,8 @@ class ContextStore:
 
 
 class SqlConfig:
-    def __init__(self, DB_URL: str, pool_recycle: int, pool_size: int, max_overflow: int):
-        self.DB_URL = DB_URL
+    def __init__(self, db_url: str, pool_recycle: int, pool_size: int, max_overflow: int):
+        self.db_url = db_url
         self.pool_recycle = pool_recycle
         self.pool_size = pool_size
         self.max_overflow = max_overflow
@@ -156,7 +156,7 @@ class SqlConfig:
         self._context_token: Optional[Token] = None
 
     def create_engine(self):
-        return create_async_engine(self.DB_URL, pool_recycle=self.pool_recycle, pool_size=self.pool_size, max_overflow=self.max_overflow)
+        return create_async_engine(self.db_url, pool_recycle=self.pool_recycle, pool_size=self.pool_size, max_overflow=self.max_overflow)
 
     def before_request(self, request: Request):
         token = str(uuid4())

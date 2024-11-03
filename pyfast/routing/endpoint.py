@@ -30,6 +30,88 @@ async def run_in_threadpool(func: typing.Callable, *args, **kwargs):
     return await asyncio.to_thread(func, *args)
 
 
+class ParamParser:
+    def __init__(self, request):
+        self.request = request
+
+    def parse_data_by_name(self, param_name: str) -> dict:
+        param_name = param_name.lower()
+        data_parsers = {
+            "query_params": lambda: self.request.query_params.to_dict(),
+            "path_params": lambda: dict(self.request.path_params.items()),
+            "form_data": self._parse_form_data,
+        }
+
+        parser = data_parsers.get(param_name)
+        if not parser:
+            raise BadRequest(msg="Backend Error: Invalid parameter type, must be query_params, path_params or form_data.")
+
+        return parser()
+
+    def _parse_form_data(self) -> dict:
+        form_data = {k: v for k, v in self.request.form_data.items()}
+        return form_data if form_data else self.request.json()
+
+
+class InputHandler:
+    def __init__(self, request, global_dependencies, router_dependencies):
+        self.request = request
+        self.global_dependencies = global_dependencies
+        self.router_dependencies = router_dependencies
+        self.param_parser = ParamParser(request)
+
+    async def parse_pydantic_model(self, param_name: str, model_class: typing.Type[BaseModel]) -> BaseModel:
+        try:
+            data = self.param_parser.parse_data_by_name(param_name)
+            return model_class(**data)
+        except ValidationError as e:
+            invalid_fields = orjson.loads(e.json())
+            raise BadRequest(
+                errors=[
+                    {
+                        "field": get(item, "loc")[0],
+                        "msg": get(item, "msg"),
+                    }
+                    for item in invalid_fields
+                ]
+            )
+
+    async def handle_special_params(self, param_name: str) -> typing.Any:
+        special_params = {
+            "request": lambda: self.request,
+            "global_dependencies": lambda: self.global_dependencies,
+            "router_dependencies": lambda: self.router_dependencies,
+        }
+        return special_params.get(param_name, lambda: None)()
+
+    async def get_input_handler(self, signature: inspect.Signature) -> typing.Dict[str, typing.Any]:
+        """
+        Parse the request data and return the kwargs for the handler
+        """
+        kwargs = {}
+
+        for param in signature.parameters.values():
+            name = param.name
+            ptype = param.annotation
+
+            # Handle Pydantic models
+            if isinstance(ptype, type) and issubclass(ptype, BaseModel):
+                kwargs[name] = await self.parse_pydantic_model(name, ptype)
+                continue
+
+            # Handle Authorization
+            if isinstance(ptype, type) and issubclass(ptype, Authorization):
+                kwargs[name] = await ptype().validate(self.request)
+                continue
+
+            # Handle special parameters
+            special_value = await self.handle_special_params(name)
+            if special_value is not None:
+                kwargs[name] = special_value
+
+        return kwargs
+
+
 class HTTPEndpoint:
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -45,54 +127,13 @@ class HTTPEndpoint:
         This function will parse the request data and return the kwargs for the handler
 
         params:
-            handler: The handler function (get, post, put, delete, etc.)
+            signature: The function signature
             request: Request -> The request object
         """
+        handler = InputHandler(request, global_dependencies, router_dependencies)
+        return await handler.get_input_handler(signature)
 
-        _kwargs = {}
-        # inspect function to get the parameter names and types
-
-        for param in signature.parameters.values():
-            name = param.name
-            ptype = param.annotation
-            # if the parameter is a pydantic model, we will try to parse the request data
-            if isinstance(ptype, type) and issubclass(ptype, BaseModel):
-                _data = {}
-                if name.lower() == "query_params":
-                    _data = request.query_params.to_dict()
-                elif name.lower() == "path_params":
-                    _data = request.path_params.items()
-                elif name.lower() == "form_data":
-                    _data = {k: v for k, v in request.form_data.items()}
-                    if not _data:
-                        _data = request.json()
-                else:
-                    raise BadRequest(msg="Backend Error: Invalid parameter type, must be query_params, path_params or form_data.")
-                try:
-                    _prams = ptype(**_data)
-                    _kwargs[name] = _prams
-                except ValidationError as e:
-                    _invalid_fields = orjson.loads(e.json())
-                    raise BadRequest(
-                        errors=[
-                            {
-                                "field": get(item, "loc")[0],
-                                "msg": get(item, "msg"),
-                            }
-                            for item in _invalid_fields
-                        ]
-                    )
-            elif isinstance(ptype, type) and issubclass(ptype, Authorization):
-                _kwargs[name] = await ptype().validate(request)
-            elif name == "request":
-                _kwargs[name] = request
-            elif name == "global_dependencies":
-                _kwargs[name] = global_dependencies
-            elif name == "router_dependencies":
-                _kwargs[name] = router_dependencies
-        return _kwargs
-
-    async def dispatch(self, request: Request, global_dependencies, router_dependencies, *args, **kwargs) -> None:
+    async def dispatch(self, request: Request, global_dependencies, router_dependencies) -> None:
         handler_name = "get" if request.method == "HEAD" and not hasattr(self, "head") else request.method.lower()
         handler: typing.Callable[[Request], typing.Any] = getattr(  # type: ignore
             self, handler_name, self.method_not_allowed

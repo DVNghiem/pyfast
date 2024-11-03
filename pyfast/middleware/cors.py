@@ -8,11 +8,11 @@ class CORSMiddleware(Middleware):
     methods, and headers.
     """
 
-    def __init__(self, allow_origins: List[str] = [], allow_methods: List[str] = [], allow_headers: List[str] = []) -> None:
+    def __init__(self, allow_origins: List[str] = None, allow_methods: List[str] = None, allow_headers: List[str] = None) -> None:
         super().__init__()
-        self.allow_origins = allow_origins
-        self.allow_methods = allow_methods
-        self.allow_headers = allow_headers
+        self.allow_origins = allow_origins or []
+        self.allow_methods = allow_methods or []
+        self.allow_headers = allow_headers or []
 
     def before_request(self, request):
         return request

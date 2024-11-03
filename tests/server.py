@@ -5,11 +5,12 @@ from pydantic import BaseModel
 
 __base_route__ = "/benchmark"
 
+MESSAGE = "Hello World!"
+
 
 class RequestFile(HTTPEndpoint):
     def post(self, request: Request):
-        files = request.files
-        file_names = files.keys()  # noqa
+        print(request)
         return Response(
             status_code=200,
             description="multipart form data",
@@ -19,24 +20,23 @@ class RequestFile(HTTPEndpoint):
 
 class SyncQuery(HTTPEndpoint):
     def get(self, request: Request):
-        return jsonify({"message": "Hello World!"})
+        return jsonify({"message": MESSAGE})
 
 
 class AsyncQuery(HTTPEndpoint):
     async def get(self, request: Request):
-        return jsonify({"message": "Hello World!"})
+        return jsonify({"message": MESSAGE})
 
 
 class ResponseObject(HTTPEndpoint):
     def get(self, request: Request):
         return Response(
             status_code=200,
-            description={"message": "Hello World!"},
+            description={"message": MESSAGE},
             headers={"Content-Type": "application/json"},
         )
 
 
-# ======= validate BaseModel =======
 class ModelRequest(BaseModel):
     name: str
     age: int
@@ -51,7 +51,7 @@ class ValidateModel(HTTPEndpoint):
         return ModelResponse(message=f"Hello {form_data.name}! You are {form_data.age} years old.")
 
     async def get(self) -> ModelResponse:
-        return {"message": "Hello World!"}
+        return ModelResponse(message=MESSAGE)
 
 
 routes = [

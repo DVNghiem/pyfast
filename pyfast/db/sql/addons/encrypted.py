@@ -25,7 +25,7 @@ class AESEngine(EDEngine):
         super().__init__()
         self.secret_key = secret_key
         self.iv = iv
-        self.cipher = Cipher(algorithms.AES(self.secret_key), modes.CBC(self.iv), backend=default_backend())
+        self.cipher = Cipher(algorithms.AES(self.secret_key), modes.GCM(self.iv), backend=default_backend())
         self.padding = padding_class(128)
 
     def encrypt(self, data: str) -> str:
@@ -41,8 +41,6 @@ class AESEngine(EDEngine):
         _len_iv = len(self.iv)
         _ciphered_text = _data[_len_iv:]
         unpadder = self.padding.unpadder()
-        decryptor = self.cipher.decryptor()
-        padded_plain_text = decryptor.update(_ciphered_text) + decryptor.finalize()
         decryptor = self.cipher.decryptor()
         padded_plain_text = decryptor.update(_ciphered_text) + decryptor.finalize()
         return unpadder.update(padded_plain_text) + unpadder.finalize()

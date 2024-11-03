@@ -27,7 +27,7 @@ class CacheManager:
                 for key, values in identify.items():
                     _obj = kwargs.get(key, None)
                     if not _obj:
-                        raise Exception(f"Caching: Identify key {key} not found in kwargs")
+                        raise ValueError(f"Caching: Identify key {key} not found in kwargs")
                     for attr in values:
                         _identify_key.append(f"{attr}={getattr(_obj, attr)}")
                 _identify_key = ":".join(_identify_key)

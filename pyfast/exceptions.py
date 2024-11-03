@@ -8,7 +8,7 @@ class BaseException(Exception):
         super().__init__(*args)
         self.msg = msg
         self.status = 400
-        self.errors: list = []
+        self.errors: list = None
         self.error_code = ErrorCode.UNKNOWN_ERROR.name
 
 
@@ -16,7 +16,7 @@ class BadRequest(BaseException):
     def __init__(
         self,
         msg: str = "Bad request",
-        errors: list = [],
+        errors: list = None,
         error_code: str = ErrorCode.BAD_REQUEST.name,
         *args: Any,
     ) -> None:
@@ -29,7 +29,7 @@ class Forbidden(BaseException):
     def __init__(
         self,
         msg: str = "Forbidden",
-        errors: list = [],
+        errors: list = None,
         error_code: str = ErrorCode.FORBIDDEN.name,
         *args: Any,
     ) -> None:
@@ -43,7 +43,7 @@ class NotFound(BaseException):
     def __init__(
         self,
         msg: str = "NotFound",
-        errors: list = [],
+        errors: list = None,
         error_code: str = ErrorCode.NOT_FOUND.name,
         *args: Any,
     ) -> None:
@@ -69,7 +69,7 @@ class ConflictError(BaseException):
     def __init__(
         self,
         msg: str = "Conflict",
-        errors: list = [],
+        errors: list = None,
         error_code: str = ErrorCode.CONFLICT.name,
         *args: Any,
     ) -> None:
@@ -83,7 +83,7 @@ class InternalServer(BaseException):
     def __init__(
         self,
         msg: str = "Internal server error",
-        errors: list = [],
+        errors: list = None,
         error_code: str = ErrorCode.SERVER_ERROR.name,
         *args: Any,
     ) -> None:
@@ -97,7 +97,7 @@ class Unauthorized(BaseException):
     def __init__(
         self,
         msg: str = "Unauthorized",
-        errors: list = [],
+        errors: list = None,
         error_code: str = ErrorCode.UNAUTHORIZED.name,
         *args: Any,
     ) -> None:
@@ -111,7 +111,7 @@ class SignatureVerifyFail(BaseException):
     def __init__(
         self,
         msg: str = "Signature verify fail",
-        errors: list = [],
+        errors: list = None,
         error_code: str = ErrorCode.SIGNATURE_VERIFY_FAIL.name,
         *args: Any,
     ) -> None:
