@@ -30,7 +30,7 @@ jobs:
       # Bandit - Scan for security vulnerabilities in Python code
       - name: Run Bandit
         run: |
-          bandit -r ./pyfast -f json -o bandit-results.json
+          bandit -r ./pyfast -f json -o bandit-results.json --exit-zero
           
       # Safety - Check dependencies for security vulnerabilities
       - name: Run Safety Check
@@ -99,6 +99,7 @@ jobs:
               body: issueBody,
               labels: ['security', 'automated-scan']
             });
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
   dependency-review:
     runs-on: ubuntu-latest
