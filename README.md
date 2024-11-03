@@ -1,9 +1,11 @@
 
 # Pyfast
 
-Pyfast: A Versatile Python and Rust Project Template
+Pyfast: A Versatile Python and Rust Framework
 
-Pyfast is a flexible, open-source project template designed is built by framework [Robyn](https://github.com/sparckles/Robyn/) to jumpstart your high-performance web development endeavors. By providing a pre-configured structure and essential components, Pyfast empowers you to rapidly build custom web applications that leverage the combined power of Python and Rust.
+Pyfast is a flexible, open-source framework built on the [Robyn](https://github.com/sparckles/Robyn/), designed to jumpstart your high-performance web development endeavors. By providing a pre-configured structure and essential components, Pyfast empowers you to rapidly develop custom web applications that leverage the combined power of Python and Rust.
+
+With Pyfast, you can seamlessly integrate asynchronous features and build scalable solutions for RESTful APIs and dynamic web applications. Its intuitive design and robust tooling allow developers to focus on creating high-quality code while maximizing performance. Embrace the synergy of Python and Rust to elevate your web development experience.
 
 
 ### 🏁 Get started
@@ -38,6 +40,27 @@ maturin develop
 ### 🏃 Run your code
 
 This using default CLI Robyn, you can see bellow. You will then have access to a server on the `localhost:5005`,
+```python
+# main.py
+from pyfast import Application
+from pyfast.routing import Router, HTTPEndpoint
+
+class MyEndpoint(HTTPEndpoint):
+    
+    async def get(self, global_dependencies):
+        return {"data": "Hello World"}
+
+routing = [
+    Router("/hello", MyEndpoint)
+]
+
+app = Application(routing)
+
+if __name__ == "__main__":
+    app.start(host='localhost', port=5005)
+
+```
+
 ```
 $ python3 main.py
 ```
@@ -59,6 +82,8 @@ options:
 ```
 
 Log level can be `DEBUG`, `INFO`, `WARNING`, or `ERROR`.
+
+You can open swagger UI at path `/docs` 
 
 
 ## 💡 Features
