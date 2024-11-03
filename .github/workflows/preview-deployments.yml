@@ -119,7 +119,7 @@ jobs:
         name: Install build wheel
         with:
           arch: ${{ matrix.target }}
-          distro: ubuntu20.04
+          distro: ubuntu24.04
           githubToken: ${{ github.token }}
           dockerRunArgs: |
             --volume "${PWD}/dist:/artifacts"
