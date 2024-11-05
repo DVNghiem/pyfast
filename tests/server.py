@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from pyfast import Application, Request, Response, jsonify
 from pyfast.routing import HTTPEndpoint, Router
-from pyfast.response import JSONResponse, HTMLResponse, PlainTextResponse, RedirectResponse
+from pyfast.response import JSONResponse, HTMLResponse, PlainTextResponse, RedirectResponse, FileResponse
 
 from pydantic import BaseModel
 
@@ -82,6 +82,11 @@ class TestRedirectResponse(HTTPEndpoint):
         return RedirectResponse("/benchmark/default")
 
 
+class TestFileResponse(HTTPEndpoint):
+    def get(self, request: Request):
+        return FileResponse(b"Hello", "hello.txt")
+
+
 routes = [
     Router(f"{__base_route__}/default", DefaultRoute),
     Router(f"{__base_route__}/file", RequestFile),
@@ -93,6 +98,7 @@ routes = [
     Router(f"{__base_route__}/html", TestHtmlResponse),
     Router(f"{__base_route__}/plain_text", TestPlainTextResponse),
     Router(f"{__base_route__}/redirect", TestRedirectResponse),
+    Router(f"{__base_route__}/file", TestFileResponse),
 ]
 
 app = Application(routes=routes)

@@ -97,3 +97,18 @@ class RedirectResponse(Response):
     ) -> None:
         super().__init__(content=b"", status_code=status_code, headers=headers)
         self.raw_headers["location"] = quote(str(url), safe=":/%#?=@[]!$&'()*+,;")
+
+
+@to_response
+class FileResponse(Response):
+    def __init__(
+        self,
+        content: bytes | memoryview,
+        filename: str,
+        status_code: int = 200,
+        headers: typing.Mapping[str, str] | None = None,
+    ) -> None:
+        super().__init__(content=content, status_code=status_code, headers=headers)
+        self.raw_headers["content-disposition"] = f'attachment; filename="{filename}"'
+        self.raw_headers.setdefault("content-type", "application/octet-stream")
+        self.raw_headers.setdefault("content-length", str(len(content)))
