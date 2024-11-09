@@ -6,11 +6,7 @@ import traceback
 import threading
 
 from robyn import Request, Response
-from sqlalchemy.ext.asyncio import (
-    AsyncSession,
-    async_scoped_session,
-    create_async_engine,
-)
+from sqlalchemy.ext.asyncio import AsyncSession, async_scoped_session, AsyncEngine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.sql.expression import Delete, Insert, Update
 from contextlib import asynccontextmanager
@@ -107,14 +103,21 @@ class ContextStore:
 
 
 class SqlConfig:
-    def __init__(self, db_url: str, pool_recycle: int, pool_size: int, max_overflow: int):
-        self.db_url = db_url
-        self.pool_recycle = pool_recycle
-        self.pool_size = pool_size
-        self.max_overflow = max_overflow
+    def __init__(self, default_engine: AsyncEngine | None = None, reader_engine: AsyncEngine | None = None, writer_engine: AsyncEngine | None = None):
+        """
+        Initialize the SQL configuration.
+        You can provide a default engine, a reader engine, and a writer engine.
+        If only one engine is provided (default_engine), it will be used for both reading and writing.
+        If both reader and writer engines are provided, they will be used for reading and writing respectively.
+        Note: The reader and writer engines must be different.
+        """
+
+        assert default_engine or reader_engine or writer_engine, "At least one engine must be provided."
+        assert not (reader_engine and writer_engine and id(reader_engine) == id(writer_engine)), "Reader and writer engines must be different."
+
         engines = {
-            "writer": self.create_engine(),
-            "reader": self.create_engine(),
+            "writer": writer_engine or default_engine,
+            "reader": reader_engine or default_engine,
         }
         self.session_store = ContextStore()
 
@@ -154,9 +157,6 @@ class SqlConfig:
 
         self.get_session = get_session
         self._context_token: Optional[Token] = None
-
-    def create_engine(self):
-        return create_async_engine(self.db_url, pool_recycle=self.pool_recycle, pool_size=self.pool_size, max_overflow=self.max_overflow)
 
     def before_request(self, request: Request):
         token = str(uuid4())
