@@ -42,8 +42,8 @@ maturin develop
 This using default CLI Robyn, you can see bellow. You will then have access to a server on the `localhost:5005`,
 ```python
 # main.py
-from pyfast import Application
-from pyfast.routing import Router, HTTPEndpoint
+from pyfast import PyFast
+from pyfast.routing import Route, HTTPEndpoint
 
 class MyEndpoint(HTTPEndpoint):
     
@@ -51,14 +51,13 @@ class MyEndpoint(HTTPEndpoint):
         return {"data": "Hello World"}
 
 routing = [
-    Router("/hello", MyEndpoint)
+    Route("/hello", MyEndpoint)
 ]
 
-app = Application(routing)
+app = PyFast(routing)
 
 if __name__ == "__main__":
     app.start(host='localhost', port=5005)
-
 ```
 
 ```
