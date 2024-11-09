@@ -1,0 +1,114 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [ main, stag ]
+  pull_request:
+    branches: [ main, stag ]
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Export requirements
+        run: |
+          python -m pip install --upgrade pip
+          pip install poetry
+          poetry export --without-hashes --format=requirements.txt > requirements.txt
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install bandit safety
+          
+      # Bandit - Scan for security vulnerabilities in Python code
+      - name: Run Bandit
+        run: |
+          bandit -r ./pyfast -f json -o bandit-results.json --exit-zero
+          
+      # Safety - Check dependencies for security vulnerabilities
+      - name: Run Safety Check
+        run: |
+          safety check -r requirements.txt --json > safety-results.json
+
+      # OWASP Dependency-Check
+      - name: OWASP Dependency Check
+        uses: dependency-check/Dependency-Check_Action@main
+        with:
+          project: 'PyFast'
+          path: '.'
+          format: 'JSON'
+          
+      # Trivy - Container and Infrastructure scan
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          format: 'json'
+          output: 'trivy-results.json'
+          
+      # SonarCloud analysis
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          
+      # GitGuardian - Scan for secrets
+      - name: GitGuardian scan
+        uses: GitGuardian/ggshield/actions/secret@v1.33.0
+        with:
+          fetch-depth: 0
+        env:
+          GITHUB_PUSH_BEFORE: ${{ github.event.before }}
+          GITHUB_PUSH_BASE_SHA: ${{ github.event.base }}
+          GITHUB_PULL_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GITHUB_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
+
+      # Upload scan results as artifacts
+      - name: Upload scan results
+        uses: actions/upload-artifact@v3
+        with:
+          name: security-scan-results
+          path: |
+            bandit-results.json
+            safety-results.json
+            trivy-results.json
+            dependency-check-report.json
+            
+      # Send notification on critical issues
+      - name: Notify Security Issues
+        if: failure()
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const issueBody = `Security scan failed in ${process.env.GITHUB_WORKFLOW}
+            See detailed results in the workflow artifacts.`;
+            
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '🚨 Security Scan Failed',
+              body: issueBody,
+              labels: ['security', 'automated-scan']
+            });
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  dependency-review:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: 'Checkout Repository'
+        uses: actions/checkout@v3
+      
+      - name: 'Dependency Review'
+        uses: actions/dependency-review-action@v3
+        with:
+          fail-on-severity: critical

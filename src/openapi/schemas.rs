@@ -34,7 +34,7 @@ impl BaseSchemaGenerator {
                 Err(_) => "".to_string(),
             });
         if docstring.is_empty() {
-            return "{}".to_string();
+            return "".to_string();
         }
         let part_of_docs: Vec<&str> = docstring.split("---").collect();
         let part = part_of_docs.last().unwrap();
@@ -45,9 +45,8 @@ impl BaseSchemaGenerator {
                 let doc_json = yaml_to_json(doc);
                 return doc_json.to_string();
             }
-            Err(e) => {
-                println!("Error parsing docstring: {:?}", e);
-                return "{}".to_string();
+            Err(_e) => {
+                return "".to_string();
             }
         }
     }

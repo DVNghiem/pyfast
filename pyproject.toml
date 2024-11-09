@@ -12,13 +12,27 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dynamic = ["version"]
+dependencies=[
+    "robyn==0.58.0",
+    "sqlalchemy[asyncio] == 2.0.31",
+    "pydantic[email]==2.8.2",
+    "passlib==1.7.4",
+    "pyjwt==2.8.0",
+    "pydash==8.0.3",
+    "sentry-sdk==2.11.0",
+    "pydantic-settings==2.3.4",
+    "celery==5.4.0",
+    "asgiref==3.8.1",
+    "psycopg==3.2.3",
+    "pyyaml == 6.0.2",
+]
 [tool.maturin]
 features = ["pyo3/extension-module"]
 module-name = "pyfast"
 
 [tool.poetry]
 name = "pyfast"
-version = "1.0.0"
+version = "0.0.1"
 description = "A Fast Async Python backend with a Rust runtime."
 authors = ["Martin Dang <vannghiem848@gmail.com>"]
 
@@ -26,7 +40,7 @@ authors = ["Martin Dang <vannghiem848@gmail.com>"]
 python = "^3.9"
 robyn = "^0.58.0"
 sqlalchemy = {extras = ["asyncio"], version = "^2.0.31"}
-pydantic = "^2.8.2"
+pydantic = {extras = ["email"], version = "^2.9.2"}
 passlib = "^1.7.4"
 pyjwt = "^2.8.0"
 pydash = "^8.0.3"
@@ -34,6 +48,9 @@ sentry-sdk = "^2.11.0"
 pydantic-settings = "^2.3.4"
 celery = "^5.4.0"
 asgiref = "^3.8.1"
+psycopg = "^3.2.3"
+maturin = "^1.7.4"
+pyyaml = "^6.0.2"
 
 [tool.poetry.group.test.dependencies]
 pytest = "7.2.1"
@@ -48,6 +65,7 @@ isort = "5.11.5"
 pre-commit = "2.21.0"
 commitizen = "2.40"
 pytest-codspeed = "^2.2.1"
+bandit = "^1.7.10"
 
 [tool.ruff]
 line-length = 160
