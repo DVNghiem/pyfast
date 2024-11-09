@@ -15,7 +15,7 @@ dynamic = ["version"]
 dependencies=[
     "robyn==0.58.0",
     "sqlalchemy[asyncio] == 2.0.31",
-    "pydantic==2.8.2",
+    "pydantic[email]==2.8.2",
     "passlib==1.7.4",
     "pyjwt==2.8.0",
     "pydash==8.0.3",
@@ -40,7 +40,7 @@ authors = ["Martin Dang <vannghiem848@gmail.com>"]
 python = "^3.9"
 robyn = "^0.58.0"
 sqlalchemy = {extras = ["asyncio"], version = "^2.0.31"}
-pydantic = "^2.8.2"
+pydantic = {extras = ["email"], version = "^2.9.2"}
 passlib = "^1.7.4"
 pyjwt = "^2.8.0"
 pydash = "^8.0.3"

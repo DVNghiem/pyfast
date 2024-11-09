@@ -15,7 +15,7 @@ class HTTPEndpoint:
 
     def method_not_allowed(self, request: Request) -> Response:
         return JSONResponse(
-            description=orjson.dumps({"data": "", "errors": "Method Not Allowed", "error_code": 405}),
+            description=orjson.dumps({"message": "Method Not Allowed", "error_code": "METHOD_NOT_ALLOW"}),
             status_code=405,
         )
 

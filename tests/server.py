@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from pyfast import Application, Request, Response, jsonify
+from pyfast import PyFast, Request, Response, jsonify
 from pyfast.routing import HTTPEndpoint, Route
 from pyfast.response import JSONResponse, HTMLResponse, PlainTextResponse, RedirectResponse, FileResponse
 
@@ -125,7 +125,7 @@ routes = [
     functional_route,
 ]
 
-app = Application(routes=routes)
+app = PyFast(routes=routes)
 
 
 # --- Global ---

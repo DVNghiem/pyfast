@@ -1,4 +1,4 @@
-from .application import Application
+from .application import PyFast
 from robyn import Response, Request, jsonify
 
-__all__ = ["Application", "Response", "Request", "jsonify"]
+__all__ = ["PyFast", "Response", "Request", "jsonify"]

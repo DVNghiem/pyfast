@@ -7,20 +7,16 @@ pub struct SwaggerUI {
     title: String,
 
     #[pyo3(get, set)]
-    css_url: String,
-    
-    #[pyo3(get, set)]
-    js_url: String,
+    openapi_url: String,
 }
 
 #[pymethods]
 impl SwaggerUI {
     #[new]
-    fn new(title: String, css_url: String, js_url: String) -> Self {
+    fn new(title: String, openapi_url: String) -> Self {
         SwaggerUI {
             title,
-            css_url,
-            js_url,
+            openapi_url,
         }
     }
 
@@ -44,20 +40,20 @@ impl SwaggerUI {
                 <!DOCTYPE html>
                  <html>
                  <head>
-                 <link type="text/css" rel="stylesheet" href="{}">
-                 <link rel="shortcut icon" href="https://fastapi.tiangolo.com/img/favicon.png">
+                 <link type="text/css" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.9.0/swagger-ui.css">
+                 <link rel="shortcut icon" href="https://res.cloudinary.com/dslpmba3s/image/upload/v1731161593/logo/pyfast-180x180.png">
                  <title>{}</title>
                  </head>
                  <body>
                  <div id="swagger-ui">
                  </div>
-                 <script src="{}"></script>
+                 <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.9.0/swagger-ui-bundle.js"></script>
                  <!-- `SwaggerUIBundle` is now available on the page -->
                  <script>
                  const ui = SwaggerUIBundle({{
-                     url: 'schema',
+                     url: '{}',
             "#,
-            self.css_url, self.title, self.js_url
+            self.title, self.openapi_url
         );
         if oauth2_redirect_url {
             html.push_str(
