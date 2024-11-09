@@ -7,14 +7,14 @@ from robyn import Response
 import orjson
 
 from pyfast.openapi import SwaggerUI, SchemaGenerator
-from pyfast.routing import Router
+from pyfast.routing import Route
 from pyfast.logging import reset_logger
 
 reset_logger()
 
 
 class Application(Robyn):
-    def __init__(self, routes: List[Router] = [], *args: Any, **kwargs: Any) -> None:
+    def __init__(self, routes: List[Route] = [], *args: Any, **kwargs: Any) -> None:
         super().__init__(__file__, *args, **kwargs)
 
         for route in routes:

@@ -1,15 +1,16 @@
 # -*- coding: utf-8 -*-
 from typing import Callable, Any, Dict, List, Union, Type, get_origin, get_args
 from robyn.router import Router as RobynRouter
-from robyn import HttpMethod
+from robyn import HttpMethod, Request
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 from enum import Enum
 
-from pyfast.auth.authorization import Authorization
-
 import inspect
 import yaml  # type: ignore
+
+from pyfast.auth.authorization import Authorization
+from .dispatcher import dispatch
 
 
 def get_field_type(field):
@@ -135,11 +136,11 @@ def _process_field(name: str, field: Any) -> Dict[str, Any]:
     return SchemaProcessor._process_field(name, field)
 
 
-class Router:
+class Route:
     def __init__(
         self,
         path: str,
-        endpoint: Callable[..., Any],
+        endpoint: Callable[..., Any] | None = None,
         *,
         name: str | None = None,
         tags: List[str] | None = None,
@@ -147,6 +148,7 @@ class Router:
         self.path = path
         self.endpoint = endpoint
         self.tags = tags or ["Default"]
+        self.name = name
 
         self.http_methods = {
             "GET": HttpMethod.GET,
@@ -157,26 +159,7 @@ class Router:
             "HEAD": HttpMethod.HEAD,
             "OPTIONS": HttpMethod.OPTIONS,
         }
-
-    def __call__(self, app, *args: Any, **kwds: Any) -> Any:
-        router = RobynRouter()
-        for name, func in self.endpoint.__dict__.items():
-            if name.upper() in self.http_methods:
-                _signature = inspect.signature(func)
-                _summary = func.__doc__
-                self.endpoint.dispatch.__doc__ = self.swagger_generate(_signature, _summary)
-                endpoint_object = self.endpoint()
-                dispatch = endpoint_object.dispatch
-                router.add_route(
-                    route_type=self.http_methods[name.upper()],
-                    endpoint=self.path,
-                    handler=dispatch,
-                    is_const=False,
-                    exception_handler=app.exception_handler,
-                    injected_dependencies=app.dependencies.get_dependency_map(app),
-                )
-
-        return router
+        self.functional_handlers = []
 
     def swagger_generate(self, signature: inspect.Signature, summary: str = "Document API") -> str:
         _inputs = signature.parameters.values()
@@ -212,3 +195,85 @@ class Router:
             }
 
         return yaml.dump(_docs)
+
+    def _combine_path(self, path1: str, path2: str) -> str:
+        if path1.endswith("/") and path2.startswith("/"):
+            return path1 + path2[1:]
+        if not path1.endswith("/") and not path2.startswith("/"):
+            return path1 + "/" + path2
+        return path1 + path2
+
+    def __call__(self, app, *args: Any, **kwds: Any) -> Any:
+        router = RobynRouter()
+
+        # Validate handlers
+        if not self.endpoint and not self.functional_handlers:
+            raise ValueError(f"No handler found for route: {self.path}")
+
+        default_params = {"is_const": False, "injected_dependencies": app.dependencies.get_dependency_map(app), "exception_handler": app.exception_handler}
+
+        # Handle functional routes
+        for h in self.functional_handlers:
+            router.add_route(
+                route_type=self.http_methods[h["method"].upper()], endpoint=self._combine_path(self.path, h["path"]), handler=h["func"], **default_params
+            )
+
+        if not self.endpoint:
+            return router
+
+        # Handle class-based routes
+        for name, func in self.endpoint.__dict__.items():
+            if name.upper() in self.http_methods:
+                sig = inspect.signature(func)
+                doc = self.swagger_generate(sig, func.__doc__)
+                self.endpoint.dispatch.__doc__ = doc
+                endpoint_obj = self.endpoint()
+                router.add_route(route_type=self.http_methods[name.upper()], endpoint=self.path, handler=endpoint_obj.dispatch, **default_params)
+                del endpoint_obj  # free up memory
+
+        return router
+
+    def route(
+        self,
+        path: str,
+        method: str,
+        *args: Any,
+        **kwds: Any,
+    ) -> Callable:
+        def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+            async def functional_wrapper(request: Request, global_dependencies, router_dependencies) -> Any:
+                return await dispatch(func, request, global_dependencies, router_dependencies)
+
+            sig = inspect.signature(func)
+            functional_wrapper.__doc__ = self.swagger_generate(sig, func.__doc__)
+
+            self.functional_handlers.append(
+                {
+                    "path": path,
+                    "method": method,
+                    "func": functional_wrapper,
+                }
+            )
+
+        return decorator
+
+    def get(self, path: str) -> Callable:
+        return self.route(path, "GET")
+
+    def post(self, path: str) -> Callable:
+        return self.route(path, "POST")
+
+    def put(self, path: str) -> Callable:
+        return self.route(path, "PUT")
+
+    def delete(self, path: str) -> Callable:
+        return self.route(path, "DELETE")
+
+    def patch(self, path: str) -> Callable:
+        return self.route(path, "PATCH")
+
+    def head(self, path: str) -> Callable:
+        return self.route(path, "HEAD")
+
+    def options(self, path: str) -> Callable:
+        return self.route(path, "OPTIONS")

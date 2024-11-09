@@ -1,4 +1,4 @@
-from .router import Router
+from .router import Route
 from .endpoint import HTTPEndpoint
 
-__all__ = ["Router", "HTTPEndpoint"]
+__all__ = ["Route", "HTTPEndpoint"]
