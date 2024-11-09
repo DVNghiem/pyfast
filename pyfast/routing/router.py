@@ -164,7 +164,7 @@ class Route:
     def swagger_generate(self, signature: inspect.Signature, summary: str = "Document API") -> str:
         _inputs = signature.parameters.values()
         _inputs_dict = {_input.name: _input.annotation for _input in _inputs}
-        _docs: Dict = {"summary": summary, "tags": self.tags, "responses": []}
+        _docs: Dict = {"summary": summary, "tags": self.tags, "responses": [], "name": self.name}
         _response_type = signature.return_annotation
 
         for key, item in _inputs_dict.items():
