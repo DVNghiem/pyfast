@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from pyfast import Application, Request, Response, jsonify
-from pyfast.routing import HTTPEndpoint, Router
+from pyfast.routing import HTTPEndpoint, Route
 from pyfast.response import JSONResponse, HTMLResponse, PlainTextResponse, RedirectResponse, FileResponse
 
 from pydantic import BaseModel
@@ -87,18 +87,42 @@ class TestFileResponse(HTTPEndpoint):
         return FileResponse(b"Hello", "hello.txt")
 
 
+functional_route = Route("/functional")
+
+
+@functional_route.get("/default")
+def get(request: Request, query_params: ModelRequest):
+    return jsonify({"message": MESSAGE})
+
+
+@functional_route.post("/default")
+def post(request: Request, global_dependencies):
+    return jsonify({"message": MESSAGE})
+
+
+@functional_route.put("/default")
+def put(request: Request, router_dependencies):
+    return jsonify({"message": MESSAGE})
+
+
+@functional_route.delete("/default")
+def delete(request: Request):
+    return jsonify({"message": MESSAGE})
+
+
 routes = [
-    Router(f"{__base_route__}/default", DefaultRoute),
-    Router(f"{__base_route__}/file", RequestFile),
-    Router(f"{__base_route__}/sync", SyncQuery),
-    Router(f"{__base_route__}/async", AsyncQuery),
-    Router(f"{__base_route__}/response", ResponseObject),
-    Router(f"{__base_route__}/validate", ValidateModel),
-    Router(f"{__base_route__}/json", TestJsonResponse),
-    Router(f"{__base_route__}/html", TestHtmlResponse),
-    Router(f"{__base_route__}/plain_text", TestPlainTextResponse),
-    Router(f"{__base_route__}/redirect", TestRedirectResponse),
-    Router(f"{__base_route__}/file", TestFileResponse),
+    Route(f"{__base_route__}/default", DefaultRoute),
+    Route(f"{__base_route__}/file", RequestFile),
+    Route(f"{__base_route__}/sync", SyncQuery),
+    Route(f"{__base_route__}/async", AsyncQuery),
+    Route(f"{__base_route__}/response", ResponseObject),
+    Route(f"{__base_route__}/validate", ValidateModel),
+    Route(f"{__base_route__}/json", TestJsonResponse),
+    Route(f"{__base_route__}/html", TestHtmlResponse),
+    Route(f"{__base_route__}/plain_text", TestPlainTextResponse),
+    Route(f"{__base_route__}/redirect", TestRedirectResponse),
+    Route(f"{__base_route__}/file", TestFileResponse),
+    functional_route,
 ]
 
 app = Application(routes=routes)
