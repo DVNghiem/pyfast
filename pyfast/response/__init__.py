@@ -1,3 +1,3 @@
-from .response import JSONResponse, HTMLResponse, PlainTextResponse, RedirectResponse, FileResponse
+from .response import Response, JSONResponse, HTMLResponse, PlainTextResponse, RedirectResponse, FileResponse
 
-__all__ = ["JSONResponse", "HTMLResponse", "PlainTextResponse", "RedirectResponse", "FileResponse"]
+__all__ = ["Response", "JSONResponse", "HTMLResponse", "PlainTextResponse", "RedirectResponse", "FileResponse"]
