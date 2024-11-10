@@ -5,8 +5,10 @@ from urllib.parse import quote
 from robyn import Response as RobynResponse, Headers
 import orjson
 
+from pyfast.background import BackgroundTask, BackgroundTasks
 
-class Response:
+
+class BaseResponse:
     media_type = None
     charset = "utf-8"
 
@@ -16,12 +18,14 @@ class Response:
         status_code: int = 200,
         headers: typing.Mapping[str, str] | None = None,
         media_type: str | None = None,
+        backgrounds: typing.List[BackgroundTask] | None = None,
     ) -> None:
         self.status_code = status_code
         if media_type is not None:
             self.media_type = media_type
         self.body = self.render(content)
         self.init_headers(headers)
+        self.backgrounds = backgrounds
 
     def render(self, content: typing.Any) -> bytes | memoryview:
         if content is None:
@@ -62,6 +66,14 @@ def to_response(cls):
         def __new__(cls, *args, **kwargs):
             instance = super().__new__(cls)
             instance.__init__(*args, **kwargs)
+            # Execute background tasks
+            task_manager = BackgroundTasks()
+            if instance.backgrounds:
+                for task in instance.backgrounds:
+                    task_manager.add_task(task)
+                task_manager.execute_all()
+                del task_manager
+
             headers = Headers(instance.raw_headers)
             return RobynResponse(
                 status_code=instance.status_code,
@@ -73,42 +85,50 @@ def to_response(cls):
 
 
 @to_response
-class JSONResponse(Response):
+class Response(BaseResponse):
+    media_type = None
+    charset = "utf-8"
+
+
+@to_response
+class JSONResponse(BaseResponse):
     media_type = "application/json"
 
 
 @to_response
-class HTMLResponse(Response):
+class HTMLResponse(BaseResponse):
     media_type = "text/html"
 
 
 @to_response
-class PlainTextResponse(Response):
+class PlainTextResponse(BaseResponse):
     media_type = "text/plain"
 
 
 @to_response
-class RedirectResponse(Response):
+class RedirectResponse(BaseResponse):
     def __init__(
         self,
         url: str,
         status_code: int = 307,
         headers: typing.Mapping[str, str] | None = None,
+        backgrounds: typing.List[BackgroundTask] | None = None,
     ) -> None:
-        super().__init__(content=b"", status_code=status_code, headers=headers)
+        super().__init__(content=b"", status_code=status_code, headers=headers, backgrounds=backgrounds)
         self.raw_headers["location"] = quote(str(url), safe=":/%#?=@[]!$&'()*+,;")
 
 
 @to_response
-class FileResponse(Response):
+class FileResponse(BaseResponse):
     def __init__(
         self,
         content: bytes | memoryview,
         filename: str,
         status_code: int = 200,
         headers: typing.Mapping[str, str] | None = None,
+        backgrounds: typing.List[BackgroundTask] | None = None,
     ) -> None:
-        super().__init__(content=content, status_code=status_code, headers=headers)
+        super().__init__(content=content, status_code=status_code, headers=headers, backgrounds=backgrounds)
         self.raw_headers["content-disposition"] = f'attachment; filename="{filename}"'
         self.raw_headers.setdefault("content-type", "application/octet-stream")
         self.raw_headers.setdefault("content-length", str(len(content)))
