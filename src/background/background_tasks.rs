@@ -2,16 +2,8 @@ use super::background_task::BackgroundTask;
 use pyo3::prelude::*;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use tokio::runtime::Runtime;
 use tokio::task::JoinHandle;
-
-use once_cell::sync::OnceCell;
-
-static RUNTIME: OnceCell<Runtime> = OnceCell::new();
-
-fn get_runtime() -> &'static Runtime {
-    RUNTIME.get_or_init(|| Runtime::new().unwrap())
-}
+use crate::utils::get_runtime;
 
 #[pyclass]
 struct TaskResult {

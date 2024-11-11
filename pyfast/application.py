@@ -9,6 +9,7 @@ from pyfast.routing import Route
 from pyfast.response import JSONResponse
 from pyfast.logging import reset_logger
 from pyfast.datastructures import Contact, License, Info
+from pyfast.scheduler import Scheduler
 
 reset_logger()
 
@@ -159,10 +160,19 @@ class PyFast(Robyn):
                 """
             ),
         ] = None,
+        scheduler: Annotated[
+            Scheduler | None,
+            Doc(
+                """
+                A scheduler to run background tasks.
+                """
+            ),
+        ] = None,
         *args: Any,
         **kwargs: Any,
     ) -> None:
         super().__init__(__file__, *args, **kwargs)
+        self.scheduler = scheduler
 
         for route in routes:
             self.router.routes.extend(route(self).get_routes())
@@ -217,3 +227,8 @@ class PyFast(Robyn):
         if after_request:
             self.after_request(endpoint=endpoint)(after_request)
         return self
+
+    def start(self, host: str = "127.0.0.1", port: int = 8080, _check_port: bool = True):
+        if self.scheduler:
+            self.scheduler.start()
+        return super().start(host, port, _check_port)
