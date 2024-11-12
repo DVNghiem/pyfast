@@ -27,7 +27,7 @@ dependencies=[
     "pyyaml == 6.0.2",
     "mongoengine==0.29.1",
     "argon2-cffi==23.1.0",
-    "bcrypt==^4.2.0"
+    "bcrypt==4.2.0"
 ]
 [tool.maturin]
 features = ["pyo3/extension-module"]
