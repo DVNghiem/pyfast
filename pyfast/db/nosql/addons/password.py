@@ -115,7 +115,7 @@ class PasswordField(BaseField):
             self.instances[instance] = value
             instance._data[self.name] = value
 
-    def to_mongo(self, value: str) -> str:
+    def to_mongo(self, value: str) -> Optional[str]:
         """Convert to MongoDB-compatible value."""
         if value is None:
             return None

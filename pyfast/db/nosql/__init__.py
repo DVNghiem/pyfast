@@ -19,6 +19,7 @@ class NoSqlConfig:
         connect(host=db_config["host"], alias=_alias)
 
     def init_app(self, app):
+        self.app = app  # noqa
         # connect
         for db_config in self.dbs_config:
             self._connect_db(db_config)
