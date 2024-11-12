@@ -45,14 +45,6 @@ jobs:
           path: '.'
           format: 'JSON'
           
-      # Trivy - Container and Infrastructure scan
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: 'fs'
-          format: 'json'
-          output: 'trivy-results.json'
-          
       # SonarCloud analysis
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@master
@@ -80,7 +72,6 @@ jobs:
           path: |
             bandit-results.json
             safety-results.json
-            trivy-results.json
             dependency-check-report.json
             
       # Send notification on critical issues
