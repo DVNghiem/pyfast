@@ -2,4 +2,4 @@
 
 set -x
 
-ruff format pyfast
+ruff format hypern

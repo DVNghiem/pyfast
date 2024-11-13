@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-from pyfast import PyFast, Request, Response, jsonify
-from pyfast.routing import HTTPEndpoint, Route
-from pyfast.response import JSONResponse, HTMLResponse, PlainTextResponse, RedirectResponse, FileResponse
+from hypern import Hypern, Request, Response, jsonify
+from hypern.routing import HTTPEndpoint, Route
+from hypern.response import JSONResponse, HTMLResponse, PlainTextResponse, RedirectResponse, FileResponse
 
 from pydantic import BaseModel
 
@@ -125,7 +125,7 @@ routes = [
     functional_route,
 ]
 
-app = PyFast(routes=routes)
+app = Hypern(routes=routes)
 
 
 # --- Global ---

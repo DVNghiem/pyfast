@@ -41,7 +41,7 @@ impl SwaggerUI {
                  <html>
                  <head>
                  <link type="text/css" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.9.0/swagger-ui.css">
-                 <link rel="shortcut icon" href="https://res.cloudinary.com/dslpmba3s/image/upload/v1731161593/logo/pyfast-180x180.png">
+                 <link rel="shortcut icon" href="https://res.cloudinary.com/dslpmba3s/image/upload/v1731161593/logo/hypern-180x180.png">
                  <title>{}</title>
                  </head>
                  <body>

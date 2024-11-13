@@ -285,6 +285,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "95505c38b4572b2d910cecb0281560f54b440a19336cbbcb27bf6ce6adc6f5a8"
 
 [[package]]
+name = "hypern"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "chrono-tz",
+ "cron",
+ "once_cell",
+ "pyo3",
+ "pyo3-asyncio",
+ "pyo3-log",
+ "redis",
+ "regex",
+ "serde",
+ "serde_json",
+ "tokio",
+ "uuid",
+ "yaml-rust",
+]
+
+[[package]]
 name = "iana-time-zone"
 version = "0.1.61"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -550,26 +570,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5e719e8df665df0d1c8fbfd238015744736151d4445ec0836b8e628aae103b77"
 dependencies = [
  "unicode-ident",
-]
-
-[[package]]
-name = "pyfast"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "chrono-tz",
- "cron",
- "once_cell",
- "pyo3",
- "pyo3-asyncio",
- "pyo3-log",
- "redis",
- "regex",
- "serde",
- "serde_json",
- "tokio",
- "uuid",
- "yaml-rust",
 ]
 
 [[package]]

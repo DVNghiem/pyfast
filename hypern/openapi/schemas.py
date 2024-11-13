@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from robyn.router import Route
 from robyn import Robyn, HttpMethod
-from pyfast.pyfast import BaseSchemaGenerator
+from hypern.hypern import BaseSchemaGenerator
 import typing
 import orjson
 

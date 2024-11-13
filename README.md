@@ -1,11 +1,11 @@
 
-# Pyfast
+# Hypern
 
-Pyfast: A Versatile Python and Rust Framework
+Hypern: A Versatile Python and Rust Framework
 
-Pyfast is a flexible, open-source framework built on the [Robyn](https://github.com/sparckles/Robyn/), designed to jumpstart your high-performance web development endeavors. By providing a pre-configured structure and essential components, Pyfast empowers you to rapidly develop custom web applications that leverage the combined power of Python and Rust.
+Hypern is a flexible, open-source framework built on the [Robyn](https://github.com/sparckles/Robyn/), designed to jumpstart your high-performance web development endeavors. By providing a pre-configured structure and essential components, Hypern empowers you to rapidly develop custom web applications that leverage the combined power of Python and Rust.
 
-With Pyfast, you can seamlessly integrate asynchronous features and build scalable solutions for RESTful APIs and dynamic web applications. Its intuitive design and robust tooling allow developers to focus on creating high-quality code while maximizing performance. Embrace the synergy of Python and Rust to elevate your web development experience.
+With Hypern, you can seamlessly integrate asynchronous features and build scalable solutions for RESTful APIs and dynamic web applications. Its intuitive design and robust tooling allow developers to focus on creating high-quality code while maximizing performance. Embrace the synergy of Python and Rust to elevate your web development experience.
 
 
 ### 🏁 Get started
@@ -42,8 +42,8 @@ maturin develop
 This using default CLI Robyn, you can see bellow. You will then have access to a server on the `localhost:5005`,
 ```python
 # main.py
-from pyfast import PyFast
-from pyfast.routing import Route, HTTPEndpoint
+from hypern import Hypern
+from hypern.routing import Route, HTTPEndpoint
 
 class MyEndpoint(HTTPEndpoint):
     
@@ -54,7 +54,7 @@ routing = [
     Route("/hello", MyEndpoint)
 ]
 
-app = PyFast(routing)
+app = Hypern(routing)
 
 if __name__ == "__main__":
     app.start(host='localhost', port=5005)

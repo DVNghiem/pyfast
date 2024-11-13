@@ -35,7 +35,7 @@ jobs:
       - name: Install build wheel - x86_64
         run: |
           pip install --force-reinstall dist/*.whl
-          cd ~ && python -c 'import pyfast'
+          cd ~ && python -c 'import hypern'
       - name: Build wheels - universal2
         uses: PyO3/maturin-action@v1
         with:
@@ -43,7 +43,7 @@ jobs:
       - name: Install build wheel - universal2
         run: |
           pip install --force-reinstall dist/*_universal2.whl
-          cd ~ && python -c 'import pyfast'
+          cd ~ && python -c 'import hypern'
 
   windows:
     runs-on: windows-latest
@@ -67,7 +67,7 @@ jobs:
         shell: bash
         run: |
           pip install --force-reinstall dist/*.whl
-          cd ~ && python -c 'import pyfast'
+          cd ~ && python -c 'import hypern'
 
   linux:
     runs-on: ubuntu-latest
@@ -91,4 +91,4 @@ jobs:
         if: matrix.target == 'x86_64'
         run: |
           pip install --force-reinstall dist/*.whl
-          cd ~ && python -c 'import pyfast'
+          cd ~ && python -c 'import hypern'

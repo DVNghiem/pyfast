@@ -88,4 +88,4 @@ def reset_logger() -> None:
         logger.propagate = False
 
 
-logger = create_logger("pyfast")
+logger = create_logger("hypern")

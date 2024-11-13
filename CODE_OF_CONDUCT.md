@@ -1,4 +1,4 @@
-### Pyfast Open Source Community Guidelines
+### Hypern Open Source Community Guidelines
 
 - **Be friendly and patient**.
 - **Be welcoming**.
