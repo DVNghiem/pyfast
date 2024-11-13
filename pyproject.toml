@@ -5,13 +5,15 @@ build-backend = "maturin"
 
 [project]
 name = "hypern"
+version = "0.1.1"
+description = "A Fast Async Python backend with a Rust runtime."
+authors = [{ name = "Martin Dang", email = "vannghiem848@gmail.com" }]
 requires-python = ">=3.10"
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
-dynamic = ["version"]
 dependencies=[
     "robyn==0.58.0",
     "sqlalchemy[asyncio] == 2.0.31",
@@ -35,7 +37,7 @@ module-name = "hypern"
 
 [tool.poetry]
 name = "hypern"
-version = "0.1.0"
+version = "0.1.1"
 description = "A Fast Async Python backend with a Rust runtime."
 authors = ["Martin Dang <vannghiem848@gmail.com>"]
 
