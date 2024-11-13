@@ -40,7 +40,7 @@ jobs:
       - name: Setup Rust part of the project
         run: |
           maturin build -i python${{ matrix.python-version }} --release --out dist
-          pip install --force-reinstall dist/pyfast*.whl
+          pip install --force-reinstall dist/*.whl
 
       - name: Run benchmarks
         uses: CodSpeedHQ/action@v3

@@ -34,7 +34,7 @@ jobs:
           args: -i python --release --out dist
       - name: Install build wheel - x86_64
         run: |
-          pip install --force-reinstall dist/pyfast*.whl
+          pip install --force-reinstall dist/*.whl
           cd ~ && python -c 'import pyfast'
       - name: Build wheels - universal2
         uses: PyO3/maturin-action@v1
@@ -42,7 +42,7 @@ jobs:
           args: -i python --release --target universal2-apple-darwin --out dist
       - name: Install build wheel - universal2
         run: |
-          pip install --force-reinstall dist/pyfast*_universal2.whl
+          pip install --force-reinstall dist/*_universal2.whl
           cd ~ && python -c 'import pyfast'
 
   windows:
@@ -66,7 +66,7 @@ jobs:
       - name: Install build wheel
         shell: bash
         run: |
-          pip install --force-reinstall dist/pyfast*.whl
+          pip install --force-reinstall dist/*.whl
           cd ~ && python -c 'import pyfast'
 
   linux:
@@ -90,5 +90,5 @@ jobs:
       - name: Install build wheel
         if: matrix.target == 'x86_64'
         run: |
-          pip install --force-reinstall dist/pyfast*.whl
+          pip install --force-reinstall dist/*.whl
           cd ~ && python -c 'import pyfast'
