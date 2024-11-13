@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from robyn import Request, Response
 from pydantic import BaseModel
-from pyfast.exceptions import BaseException
-from pyfast.response import JSONResponse
+from hypern.exceptions import BaseException
+from hypern.response import JSONResponse
 import typing
 import asyncio
 import functools

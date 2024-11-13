@@ -5,7 +5,7 @@ from urllib.parse import quote
 from robyn import Response as RobynResponse, Headers
 import orjson
 
-from pyfast.background import BackgroundTask, BackgroundTasks
+from hypern.background import BackgroundTask, BackgroundTasks
 
 
 class BaseResponse:

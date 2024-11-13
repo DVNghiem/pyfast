@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from typing import Any
-from pyfast.enum import ErrorCode
+from hypern.enum import ErrorCode
 
 
 class BaseException(Exception):

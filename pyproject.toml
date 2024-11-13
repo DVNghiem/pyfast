@@ -4,7 +4,7 @@ requires = ["maturin>=1.7,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "py-fast"
+name = "hypern"
 requires-python = ">=3.10"
 classifiers = [
     "Programming Language :: Rust",
@@ -31,10 +31,10 @@ dependencies=[
 ]
 [tool.maturin]
 features = ["pyo3/extension-module"]
-module-name = "pyfast"
+module-name = "hypern"
 
 [tool.poetry]
-name = "pyfast"
+name = "hypern"
 version = "0.1.0"
 description = "A Fast Async Python backend with a Rust runtime."
 authors = ["Martin Dang <vannghiem848@gmail.com>"]

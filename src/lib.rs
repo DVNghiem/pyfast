@@ -8,7 +8,7 @@ mod scheduler;
 
 
 #[pymodule]
-fn pyfast(_py: Python<'_>, m: &PyModule) -> PyResult<()>  {
+fn hypern(_py: Python<'_>, m: &PyModule) -> PyResult<()>  {
 
     m.add_class::<cache::backend::BaseBackend>()?;
     m.add_class::<cache::redis_backend::RedisBackend>()?;

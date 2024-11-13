@@ -30,7 +30,7 @@ jobs:
       # Bandit - Scan for security vulnerabilities in Python code
       - name: Run Bandit
         run: |
-          bandit -r ./pyfast -f json -o bandit-results.json --exit-zero
+          bandit -r ./hypern -f json -o bandit-results.json --exit-zero
           
       # Safety - Check dependencies for security vulnerabilities
       - name: Run Safety Check
@@ -41,7 +41,7 @@ jobs:
       - name: OWASP Dependency Check
         uses: dependency-check/Dependency-Check_Action@main
         with:
-          project: 'PyFast'
+          project: 'Hypern'
           path: '.'
           format: 'JSON'
           

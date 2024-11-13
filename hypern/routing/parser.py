@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ValidationError
 from robyn import Request
-from pyfast.exceptions import BadRequest, ValidationError as PyfastValidationError
-from pyfast.auth.authorization import Authorization
+from hypern.exceptions import BadRequest, ValidationError as HypernValidationError
+from hypern.auth.authorization import Authorization
 from pydash import get
 import typing
 import inspect
@@ -53,7 +53,7 @@ class InputHandler:
             return model_class(**data)
         except ValidationError as e:
             invalid_fields = orjson.loads(e.json())
-            raise PyfastValidationError(
+            raise HypernValidationError(
                 msg=orjson.dumps(
                     [
                         {

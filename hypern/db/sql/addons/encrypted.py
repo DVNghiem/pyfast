@@ -2,7 +2,7 @@
 from cryptography.hazmat.primitives import padding
 from sqlalchemy.types import TypeDecorator, LargeBinary, String
 
-from pyfast.security import EDEngine, AESEngine
+from hypern.security import EDEngine, AESEngine
 
 import os
 import typing

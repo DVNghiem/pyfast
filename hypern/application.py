@@ -4,19 +4,19 @@ from typing_extensions import Annotated, Doc
 from robyn import Robyn
 import orjson
 
-from pyfast.openapi import SwaggerUI, SchemaGenerator
-from pyfast.routing import Route
-from pyfast.response import JSONResponse
-from pyfast.logging import reset_logger
-from pyfast.datastructures import Contact, License, Info
-from pyfast.scheduler import Scheduler
+from hypern.openapi import SwaggerUI, SchemaGenerator
+from hypern.routing import Route
+from hypern.response import JSONResponse
+from hypern.logging import reset_logger
+from hypern.datastructures import Contact, License, Info
+from hypern.scheduler import Scheduler
 
 reset_logger()
 
-AppType = TypeVar("AppType", bound="PyFast")
+AppType = TypeVar("AppType", bound="Hypern")
 
 
-class PyFast(Robyn):
+class Hypern(Robyn):
     def __init__(
         self: AppType,
         routes: Annotated[
@@ -24,7 +24,7 @@ class PyFast(Robyn):
             Doc(
                 """
                 A list of routes to serve incoming HTTP and WebSocket requests.
-                You can define routes using the `Route` class from `pyfast.routing`.
+                You can define routes using the `Route` class from `Hypern.routing`.
                 **Example**
                 ---
                 ```python
@@ -53,7 +53,7 @@ class PyFast(Robyn):
                 Read more in the
                 """
             ),
-        ] = "PyFast",
+        ] = "HyperN",
         summary: Annotated[
             str | None,
             Doc(
@@ -150,7 +150,7 @@ class PyFast(Robyn):
                 **Example**
 
                 ```python
-                app = PyFast(
+                app = HyperN(
                     license_info={
                         "name": "Apache 2.0",
                         "url": "https://www.apache.org/licenses/LICENSE-2.0.html",

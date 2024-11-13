@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from robyn import Request, Response
-from pyfast.response import JSONResponse
+from hypern.response import JSONResponse
 import typing
 import orjson
 

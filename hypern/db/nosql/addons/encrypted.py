@@ -4,7 +4,7 @@ from mongoengine.base import BaseField
 
 from cryptography.hazmat.primitives import padding
 
-from pyfast.security import EDEngine, AESEngine
+from hypern.security import EDEngine, AESEngine
 
 
 class EncryptedField(BaseField):

@@ -2,7 +2,7 @@
 from typing import Callable
 import inspect
 
-from pyfast.caching.base import BaseKeyMaker
+from hypern.caching.base import BaseKeyMaker
 
 
 class CustomKeyMaker(BaseKeyMaker):

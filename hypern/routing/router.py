@@ -9,7 +9,7 @@ from enum import Enum
 import inspect
 import yaml  # type: ignore
 
-from pyfast.auth.authorization import Authorization
+from hypern.auth.authorization import Authorization
 from .dispatcher import dispatch
 
 
