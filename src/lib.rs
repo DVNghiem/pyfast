@@ -5,7 +5,11 @@ mod cache;
 mod openapi;
 mod background;
 mod scheduler;
-
+mod server;
+mod router;
+mod types;
+mod socket;
+mod executor;
 
 #[pymodule]
 fn hypern(_py: Python<'_>, m: &PyModule) -> PyResult<()>  {
@@ -20,6 +24,17 @@ fn hypern(_py: Python<'_>, m: &PyModule) -> PyResult<()>  {
     m.add_class::<background::background_tasks::BackgroundTasks>()?;
 
     m.add_class::<scheduler::scheduler::Scheduler>()?;
+    
+    m.add_class::<server::Server>()?;
+    m.add_class::<socket::SocketHeld>()?;
+    m.add_class::<router::route::Route>()?;
+    m.add_class::<router::router::Router>()?;
+    m.add_class::<types::http::HttpMethod>()?;
+    m.add_class::<types::function_info::FunctionInfo>()?;
+    m.add_class::<types::response::PyResponse>()?;
+    m.add_class::<types::request::PyRequest>()?;
+    m.add_class::<types::multimap::QueryParams>()?;
+
 
     pyo3::prepare_freethreaded_python();
     Ok(())

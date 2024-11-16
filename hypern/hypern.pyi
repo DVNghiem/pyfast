@@ -170,3 +170,53 @@ class Scheduler:
         Get the next run time of a job
         """
         pass
+
+@dataclass
+class FunctionInfo:
+    """
+    The function info object passed to the route handler.
+
+    Attributes:
+        handler (Callable): The function to be called
+        is_async (bool): Whether the function is async or not
+        number_of_params (int): The number of parameters the function has
+        args (dict): The arguments of the function
+        kwargs (dict): The keyword arguments of the function
+    """
+
+    handler: Callable
+    is_async: bool
+    number_of_params: int
+    args: dict
+    kwargs: dict
+
+class Server:
+    def __init__(self) -> None: ...
+    def add_route(self, route: Route) -> None: ...
+
+class SocketHeld:
+    def __init__(self) -> None: ...
+
+class Route:
+    path: str
+    function: FunctionInfo
+    method: str
+
+class Response:
+    status_code: int
+    response_type: str
+    headers: Any
+    description: str
+    file_path: str
+
+@dataclass
+class QueryParams:
+    queries: Dict[str, List[str]]
+
+@dataclass
+class Request:
+    query_params: QueryParams
+    headers: Dict[str, str]
+    path_params: Dict[str, str]
+    body: Any
+    method: str
