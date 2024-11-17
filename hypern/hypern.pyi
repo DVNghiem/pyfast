@@ -202,6 +202,9 @@ class Route:
     function: FunctionInfo
     method: str
 
+class Router:
+    routes: List[Route]
+
 class Response:
     status_code: int
     response_type: str

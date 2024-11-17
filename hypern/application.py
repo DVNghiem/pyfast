@@ -10,6 +10,7 @@ from hypern.response import JSONResponse
 from hypern.logging import reset_logger
 from hypern.datastructures import Contact, License, Info
 from hypern.scheduler import Scheduler
+from hypern.hypern import Router
 
 reset_logger()
 
@@ -172,6 +173,9 @@ class Hypern(Robyn):
         **kwargs: Any,
     ) -> None:
         super().__init__(__file__, *args, **kwargs)
+
+        self.router = Router()
+
         self.scheduler = scheduler
 
         for route in routes:

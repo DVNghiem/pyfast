@@ -55,7 +55,7 @@ impl Server {
     }
 
     pub fn add_route(&mut self, route: Route) {
-        self.router.lock().unwrap().add_route(route);
+        let _ = self.router.lock().unwrap().add_route(route);
     }
 
     pub fn start(
