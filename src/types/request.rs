@@ -3,19 +3,50 @@ use axum::extract::{FromRequest, Request as HttpRequest};
 use axum::response::IntoResponse;
 use axum::Json;
 use http::header;
-use pyo3::types::{PyDict, PyString};
+use pyo3::types::{PyBytes, PyDict, PyList, PyString};
 use pyo3::{exceptions::PyValueError, prelude::*};
 use serde_json::Value;
 use std::collections::HashMap;
-use std::io::Write;
+use std::io::{Read, Write};
 use tempfile::NamedTempFile;
 
 use super::{header::Headers, multimap::QueryParams};
 
+#[derive(Debug, Clone, FromPyObject)]
+pub struct UploadedFile {
+    name: String,
+    content_type: String,
+    path: std::path::PathBuf,
+    size: u64,
+    content: Vec<u8>,
+    filename: String,
+}
+
+impl ToPyObject for UploadedFile {
+    fn to_object(&self, py: Python) -> PyObject {
+        let name = self.name.clone();
+        let content_type = self.content_type.clone();
+        let path = self.path.clone();
+        let size = self.size;
+        let content = PyBytes::new(py, &self.content).into_py(py);
+        let filename = self.filename.clone();
+
+        let uploaded_file = PyUploadedFile {
+            name,
+            content_type,
+            path,
+            size,
+            content,
+            filename,
+        };
+        Py::new(py, uploaded_file).unwrap().as_ref(py).into()
+    }
+    
+}
+
 #[derive(Debug, Clone)]
 #[pyclass]
-struct UploadedFile {
-
+pub struct PyUploadedFile {
     #[pyo3(get)]
     name: String,
 
@@ -24,17 +55,44 @@ struct UploadedFile {
 
     #[pyo3(get)]
     path: std::path::PathBuf,
+
+    #[pyo3(get)]
+    size: u64,
+
+    #[pyo3(get)]
+    content: Py<PyBytes>,
+
+    #[pyo3(get)]
+    filename: String,
+}
+#[derive(Debug, Default, Clone, FromPyObject)]
+pub struct BodyData {
+    json: Vec<u8>,
+    files: Vec<UploadedFile>,
 }
 
-#[derive(Debug, Default, Clone)]
+impl ToPyObject for BodyData {
+    fn to_object(&self, py: Python) -> PyObject {
+        let json = self.json.clone();
+        let files = self.files.clone();
+
+        let json = PyBytes::new(py, &json);
+        let files: Vec<Py<PyAny>> = files.into_iter().map(|file| file.to_object(py)).collect();
+        let files = PyList::new(py, files);
+        let body = PyBodyData { json: json.into(), files: files.into() };
+        Py::new(py, body).unwrap().as_ref(py).into()
+    }
+    
+}
+
+#[derive(Debug, Clone)]
 #[pyclass]
-pub struct BodyData {
+pub struct PyBodyData {
+    #[pyo3(get)]
+    json: Py<PyBytes>,
 
     #[pyo3(get)]
-    json: Vec<u8>,
-
-    #[pyo3(get)]
-    files: Vec<UploadedFile>,
+    files: Py<PyList>,
 }
 
 #[derive(Default, Debug, Clone, FromPyObject)]
@@ -51,7 +109,7 @@ impl ToPyObject for Request {
         let query_params = self.query_params.clone();
         let headers: Py<Headers> = self.headers.clone().into_py(py).extract(py).unwrap();
         let path_params = self.path_params.clone().into_py(py).extract(py).unwrap();
-        let body = self.body.clone().into_py(py).extract(py).unwrap();
+        let body = self.body.clone().to_object(py).extract(py).unwrap();
 
         let request = PyRequest {
             query_params,
@@ -89,12 +147,12 @@ impl Request {
         let default_body = BodyData::default();
         let body = match content_type {
             t if t.starts_with("application/json") => {
-                let json = Json::<Vec<u8>>::from_request(request, &())
+                let json = Json::<Value>::from_request(request, &())
                     .await
                     .map_err(|e| e.into_response());
                 match json {
                     Ok(json) => BodyData {
-                        json: json.to_vec(),
+                        json: json.to_string().as_bytes().to_vec(),
                         files: vec![],
                     },
                     Err(_e) => default_body,
@@ -130,6 +188,7 @@ impl Request {
                             _ => vec![],
                         }
                     } else {
+                        let filename = field.file_name().unwrap_or("").to_string();
                         let data = field.bytes().await.map_err(|e| e.into_response());
 
                         let mut temp_file = NamedTempFile::new().map_err(|e| e);
@@ -137,10 +196,18 @@ impl Request {
                         match temp_file {
                             Ok(ref mut file) => {
                                 let _ = file.write(&data.unwrap()).map_err(|e| e);
+                                let file_content = file.reopen().map_err(|e| e);
                                 files.push(UploadedFile {
                                     name,
                                     content_type,
                                     path: file.path().to_path_buf(),
+                                    size: file.path().metadata().unwrap().len(),
+                                    content: {
+                                        let mut buffer = Vec::new();
+                                        file_content.unwrap().read_to_end(&mut buffer).unwrap();
+                                        buffer
+                                    },
+                                    filename,
                                 });
                             }
                             Err(e) => {
@@ -175,7 +242,7 @@ pub struct PyRequest {
     #[pyo3(get, set)]
     pub path_params: Py<PyDict>,
     #[pyo3(get)]
-    pub body: Py<BodyData>,
+    pub body: PyBodyData,
     #[pyo3(get)]
     pub method: String,
 }
@@ -188,7 +255,7 @@ impl PyRequest {
         query_params: QueryParams,
         headers: Py<Headers>,
         path_params: Py<PyDict>,
-        body: Py<BodyData>,
+        body: PyBodyData,
         method: String,
     ) -> Self {
         Self {
@@ -201,32 +268,32 @@ impl PyRequest {
     }
 
     #[setter]
-    pub fn set_body(&mut self, body: Py<BodyData>) -> PyResult<()> {
+    pub fn set_body(&mut self, body: PyBodyData) -> PyResult<()> {
         self.body = body;
         Ok(())
     }
 
     pub fn json(&self, py: Python) -> PyResult<PyObject> {
-        match self.body.as_ref(py).downcast::<PyString>() {
-            Ok(python_string) => match serde_json::from_str(python_string.extract()?) {
-                Ok(Value::Object(map)) => {
-                    let dict = PyDict::new(py);
+        let body = self.body.json.clone();
+        let body_bytes: &[u8] = &body.as_ref(py).as_bytes();
+        let body = PyString::new(py, &String::from_utf8_lossy(body_bytes));
+        match serde_json::from_str(body.extract()?) {
+            Ok(Value::Object(map)) => {
+                let dict = PyDict::new(py);
 
-                    for (key, value) in map.iter() {
-                        let py_key = key.to_string().into_py(py);
-                        let py_value = match value {
-                            Value::String(s) => s.as_str().into_py(py),
-                            _ => value.to_string().into_py(py),
-                        };
+                for (key, value) in map.iter() {
+                    let py_key = key.to_string().into_py(py);
+                    let py_value = match value {
+                        Value::String(s) => s.as_str().into_py(py),
+                        _ => value.to_string().into_py(py),
+                    };
 
-                        dict.set_item(py_key, py_value)?;
-                    }
-
-                    Ok(dict.into_py(py))
+                    dict.set_item(py_key, py_value)?;
                 }
-                _ => Err(PyValueError::new_err("Invalid JSON object")),
-            },
-            Err(e) => Err(e.into()),
+
+                Ok(dict.into_py(py))
+            }
+            _ => Err(PyValueError::new_err("Invalid JSON object")),
         }
     }
 }

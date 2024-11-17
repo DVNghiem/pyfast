@@ -214,9 +214,23 @@ class QueryParams:
     queries: Dict[str, List[str]]
 
 @dataclass
+class UploadedFile:
+    name: str
+    content_type: str
+    path: str
+    size: int
+    content: bytes
+    filename: str
+
+@dataclass
+class BodyData:
+    json: bytes
+    files: List[UploadedFile]
+
+@dataclass
 class Request:
     query_params: QueryParams
     headers: Dict[str, str]
     path_params: Dict[str, str]
-    body: Any
+    body: BodyData
     method: str

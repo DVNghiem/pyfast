@@ -109,9 +109,10 @@ def spawn_process(
     loop = initialize_event_loop()
 
     server = Server()
+    import orjson
 
     async def test(request: Request):
-        return Response(200, {}, b"Hello World")
+        return Response(200, {"content-type": "application/json"}, orjson.dumps({"message": "Hello World"}))
 
     func = FunctionInfo(
         handler=test,
@@ -121,7 +122,7 @@ def spawn_process(
         kwargs={},
     )
 
-    route = Route("/test", func, "GET")
+    route = Route("/test", func, "POST")
     server.add_route(route)
 
     try:
