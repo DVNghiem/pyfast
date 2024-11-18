@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 use tempfile::NamedTempFile;
 
-use super::{header::Headers, multimap::QueryParams};
+use super::{header::Header, multimap::QueryParams};
 
 #[derive(Debug, Clone, FromPyObject)]
 pub struct UploadedFile {
@@ -98,7 +98,7 @@ pub struct PyBodyData {
 #[derive(Default, Debug, Clone, FromPyObject)]
 pub struct Request {
     pub query_params: QueryParams,
-    pub headers: Headers,
+    pub headers: Header,
     pub method: String,
     pub path_params: HashMap<String, String>,
     pub body: BodyData,
@@ -107,7 +107,7 @@ pub struct Request {
 impl ToPyObject for Request {
     fn to_object(&self, py: Python) -> PyObject {
         let query_params = self.query_params.clone();
-        let headers: Py<Headers> = self.headers.clone().into_py(py).extract(py).unwrap();
+        let headers: Py<Header> = self.headers.clone().into_py(py).extract(py).unwrap();
         let path_params = self.path_params.clone().into_py(py).extract(py).unwrap();
         let body = self.body.clone().to_object(py).extract(py).unwrap();
 
@@ -137,7 +137,7 @@ impl Request {
         }
 
         // parse the header to python header object
-        let headers = Headers::from_hyper_headers(request.headers());
+        let headers = Header::from_hyper_headers(request.headers());
         let method = request.method().to_string();
         let content_type = request
             .headers()
@@ -238,7 +238,7 @@ pub struct PyRequest {
     #[pyo3(get, set)]
     pub query_params: QueryParams,
     #[pyo3(get, set)]
-    pub headers: Py<Headers>,
+    pub headers: Py<Header>,
     #[pyo3(get, set)]
     pub path_params: Py<PyDict>,
     #[pyo3(get)]
@@ -253,7 +253,7 @@ impl PyRequest {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         query_params: QueryParams,
-        headers: Py<Headers>,
+        headers: Py<Header>,
         path_params: Py<PyDict>,
         body: PyBodyData,
         method: String,

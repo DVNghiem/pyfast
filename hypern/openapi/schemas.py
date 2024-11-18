@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-from robyn.router import Route
-from robyn import Robyn, HttpMethod
-from hypern.hypern import BaseSchemaGenerator
+from __future__ import annotations
+
+from hypern.hypern import BaseSchemaGenerator, Route as InternalRoute
 import typing
 import orjson
 
@@ -16,7 +16,7 @@ class SchemaGenerator(BaseSchemaGenerator):
     def __init__(self, base_schema: dict[str, typing.Any]) -> None:
         self.base_schema = base_schema
 
-    def get_endpoints(self, routes: list[Route]) -> list[EndpointInfo]:
+    def get_endpoints(self, routes: list[InternalRoute]) -> list[EndpointInfo]:
         """
         Given the routes, yields the following information:
 
@@ -30,25 +30,14 @@ class SchemaGenerator(BaseSchemaGenerator):
         endpoints_info: list[EndpointInfo] = []
 
         for route in routes:
-            method = route.route_type
-            http_method = "get"
-            if method == HttpMethod.POST:
-                http_method = "post"
-            elif method == HttpMethod.PUT:
-                http_method = "put"
-            elif method == HttpMethod.PATCH:
-                http_method = "patch"
-            elif method == HttpMethod.DELETE:
-                http_method = "delete"
-            elif method == HttpMethod.OPTIONS:
-                http_method = "options"
-            endpoints_info.append(EndpointInfo(path=route.route, http_method=http_method, func=route.function.handler))
+            method = route.method.lower()
+            endpoints_info.append(EndpointInfo(path=route.path, http_method=method, func=route.function.handler))
         return endpoints_info
 
-    def get_schema(self, app: Robyn) -> dict[str, typing.Any]:
+    def get_schema(self, app) -> dict[str, typing.Any]:
         schema = dict(self.base_schema)
         schema.setdefault("paths", {})
-        endpoints_info = self.get_endpoints(app.router.get_routes())
+        endpoints_info = self.get_endpoints(app.router.routes)
 
         for endpoint in endpoints_info:
             parsed = self.parse_docstring(endpoint.func)

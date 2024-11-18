@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-from robyn import Request, Response
+from hypern.hypern import Request, Response
 from pydantic import BaseModel
 from hypern.exceptions import BaseException
 from hypern.response import JSONResponse
@@ -28,11 +28,11 @@ async def run_in_threadpool(func: typing.Callable, *args, **kwargs):
     return await asyncio.to_thread(func, *args)
 
 
-async def dispatch(handler, request: Request, global_dependencies, router_dependencies) -> Response:
+async def dispatch(handler, request: Request) -> Response:
     try:
         is_async = is_async_callable(handler)
         signature = inspect.signature(handler)
-        input_handler = InputHandler(request, global_dependencies, router_dependencies)
+        input_handler = InputHandler(request)
         _response_type = signature.return_annotation
         _kwargs = await input_handler.get_input_handler(signature)
 

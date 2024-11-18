@@ -2,22 +2,22 @@ import asyncio
 from multiprocess import Process
 import signal
 import sys
-from typing import List, Any
-from .hypern import SocketHeld, Server, Route, FunctionInfo, Request, Response
+from typing import List
+from .hypern import SocketHeld, Server, Router
 from .logging import logger
 
 
 def run_processes(
-    url: str,
+    host: str,
     port: int,
-    routes: List[Any],
+    router: Router,
     workers: int,
     processes: int,
 ) -> List[Process]:
-    socket = SocketHeld(url, port)
+    socket = SocketHeld(host, port)
 
     process_pool = init_processpool(
-        routes,
+        router,
         socket,
         workers,
         processes,
@@ -39,18 +39,14 @@ def run_processes(
 
 
 def init_processpool(
-    routes: List[Any],
+    router: Router,
     socket: SocketHeld,
     workers: int,
     processes: int,
 ) -> List[Process]:
     process_pool = []
     if sys.platform.startswith("win32") or processes == 1:
-        spawn_process(
-            routes,
-            socket,
-            workers,
-        )
+        spawn_process(router, socket, workers, 1)
 
         return process_pool
 
@@ -58,11 +54,7 @@ def init_processpool(
         copied_socket = socket.try_clone()
         process = Process(
             target=spawn_process,
-            args=(
-                routes,
-                copied_socket,
-                workers,
-            ),
+            args=(router, copied_socket, workers, 1),
         )
         process.start()
         process_pool.append(process)
@@ -86,11 +78,7 @@ def initialize_event_loop():
         return loop
 
 
-def spawn_process(
-    routes: List[Any],
-    socket: SocketHeld,
-    workers: int,
-):
+def spawn_process(router: Router, socket: SocketHeld, workers: int, processes: int):
     """
     This function is called by the main process handler to create a server runtime.
     This functions allows one runtime per process.
@@ -109,24 +97,10 @@ def spawn_process(
     loop = initialize_event_loop()
 
     server = Server()
-    import orjson
-
-    async def test(request: Request):
-        return Response(200, {"content-type": "application/json"}, orjson.dumps({"message": "Hello World"}))
-
-    func = FunctionInfo(
-        handler=test,
-        is_async=True,
-        number_of_params=1,
-        args={"request": 1},
-        kwargs={},
-    )
-
-    route = Route("/test", func, "POST")
-    server.add_route(route)
+    server.set_router(router=router)
 
     try:
-        server.start(socket, workers, 1)
+        server.start(socket, workers, processes)
         loop = asyncio.get_event_loop()
         loop.run_forever()
     except KeyboardInterrupt:

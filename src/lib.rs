@@ -32,6 +32,7 @@ fn hypern(_py: Python<'_>, m: &PyModule) -> PyResult<()>  {
     m.add_class::<types::http::HttpMethod>()?;
     m.add_class::<types::function_info::FunctionInfo>()?;
     m.add_class::<types::response::PyResponse>()?;
+    m.add_class::<types::header::Header>()?;
     m.add_class::<types::request::PyRequest>()?;
     m.add_class::<types::request::PyBodyData>()?;
     m.add_class::<types::request::PyUploadedFile>()?;

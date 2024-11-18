@@ -4,7 +4,7 @@ use super::route::Route;
 
 /// Contains the thread safe hashmaps of different routes
 #[pyclass]
-#[derive(Debug, Default)]
+#[derive(Debug, Default, FromPyObject)]
 pub struct Router {
     #[pyo3(get, set)]
     path: String,
@@ -40,6 +40,15 @@ impl Router {
         self.routes.push(route);
         // Sort routes after adding new one
         self.sort_routes();
+        Ok(())
+    }
+
+    // extend list route
+    pub fn extend_route(&mut self, routes: Vec<Route>) -> PyResult<()> {
+
+        for route in routes {
+            let _ = self.add_route(route);
+        }
         Ok(())
     }
 

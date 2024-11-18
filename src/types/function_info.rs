@@ -57,4 +57,8 @@ impl FunctionInfo {
             kwargs,
         }
     }
+
+    fn __str__(&self) -> PyResult<String> {
+        Ok(format!("Function(handler = {:?}, is_async = {})", self.handler, self.is_async))
+    }
 }

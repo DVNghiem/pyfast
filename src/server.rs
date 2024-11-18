@@ -1,6 +1,6 @@
 use crate::{
     executor::execute_http_function,
-    router::{route::Route, router::Router, ws::WebSocketRouter},
+    router::{router::Router, ws::WebSocketRouter},
     socket::SocketHeld,
     types::{function_info::FunctionInfo, request::Request},
 };
@@ -54,8 +54,8 @@ impl Server {
         }
     }
 
-    pub fn add_route(&mut self, route: Route) {
-        let _ = self.router.lock().unwrap().add_route(route);
+    pub fn set_router(&mut self, router: Router) {
+        self.router = Arc::new(Mutex::new(router));
     }
 
     pub fn start(
@@ -75,7 +75,7 @@ impl Server {
             return Ok(());
         }
 
-        let _raw_socket = socket.try_borrow_mut()?.get_socket();
+        let raw_socket = socket.try_borrow_mut()?.get_socket();
 
         let router = self.router.clone();
         let _web_socket_router = self.websocket_router.clone();
@@ -113,7 +113,9 @@ impl Server {
                 .unwrap();
             rt.block_on(async move {
                 let task_locals = task_locals_copy.clone();
-                
+                // tracing_subscriber::fmt()
+                // .with_max_level(tracing::Level::DEBUG)
+                // .init();
                 let mut app = RouterServer::new();
 
                 // handle logic for each route with pyo3
@@ -153,8 +155,9 @@ impl Server {
                     };
                 }
                 // run our app with hyper, listening globally on port 3000
-                let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+                let listener = tokio::net::TcpListener::from_std(raw_socket.into()).unwrap();
                 axum::serve(listener, app).await.unwrap();
+
             });
         });
 

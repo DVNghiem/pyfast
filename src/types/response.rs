@@ -3,7 +3,7 @@ use pyo3::{
     types::{PyBytes, PyDict},
 };
 
-use super::header::Headers;
+use super::header::Header;
 use crate::utils::get_description_from_pyobject;
 
 
@@ -11,7 +11,7 @@ use crate::utils::get_description_from_pyobject;
 pub struct Response {
     pub status_code: u16,
     pub response_type: String,
-    pub headers: Headers,
+    pub headers: Header,
 
     #[pyo3(from_py_with = "get_description_from_pyobject")]
     pub description: Vec<u8>,
@@ -19,10 +19,10 @@ pub struct Response {
 }
 
 impl Response {
-    pub fn not_found(headers: Option<&Headers>) -> Self {
+    pub fn not_found(headers: Option<&Header>) -> Self {
         let headers = match headers {
             Some(headers) => headers.clone(),
-            None => Headers::new(None),
+            None => Header::new(None),
         };
 
         Self {
@@ -34,10 +34,10 @@ impl Response {
         }
     }
 
-    pub fn internal_server_error(headers: Option<&Headers>) -> Self {
+    pub fn internal_server_error(headers: Option<&Header>) -> Self {
         let headers = match headers {
             Some(headers) => headers.clone(),
-            None => Headers::new(None),
+            None => Header::new(None),
         };
 
         Self {
@@ -79,7 +79,7 @@ pub struct PyResponse {
     #[pyo3(get)]
     pub response_type: String,
     #[pyo3(get, set)]
-    pub headers: Py<Headers>,
+    pub headers: Py<Header>,
     #[pyo3(get)]
     pub description: Py<PyAny>,
     #[pyo3(get)]
@@ -96,12 +96,12 @@ impl PyResponse {
         headers: &PyAny,
         description: Py<PyAny>,
     ) -> PyResult<Self> {
-        let headers_output: Py<Headers> = if let Ok(headers_dict) = headers.downcast::<PyDict>() {
+        let headers_output: Py<Header> = if let Ok(headers_dict) = headers.downcast::<PyDict>() {
             // Here you'd have logic to create a Headers instance from a PyDict
             // For simplicity, let's assume you have a method `from_dict` on Headers for this
-            let headers = Headers::new(Some(headers_dict)); // Hypothetical method
+            let headers = Header::new(Some(headers_dict)); // Hypothetical method
             Py::new(py, headers)?
-        } else if let Ok(headers) = headers.extract::<Py<Headers>>() {
+        } else if let Ok(headers) = headers.extract::<Py<Header>>() {
             // If it's already a Py<Headers>, use it directly
             headers
         } else {

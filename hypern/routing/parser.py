@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from pydantic import BaseModel, ValidationError
-from robyn import Request
+from hypern.hypern import Request
 from hypern.exceptions import BadRequest, ValidationError as HypernValidationError
 from hypern.auth.authorization import Authorization
 from pydash import get
@@ -41,10 +41,8 @@ class ParamParser:
 
 
 class InputHandler:
-    def __init__(self, request, global_dependencies, router_dependencies):
+    def __init__(self, request):
         self.request = request
-        self.global_dependencies = global_dependencies
-        self.router_dependencies = router_dependencies
         self.param_parser = ParamParser(request)
 
     async def parse_pydantic_model(self, param_name: str, model_class: typing.Type[BaseModel]) -> BaseModel:
@@ -68,8 +66,6 @@ class InputHandler:
     async def handle_special_params(self, param_name: str) -> typing.Any:
         special_params = {
             "request": lambda: self.request,
-            "global_dependencies": lambda: self.global_dependencies,
-            "router_dependencies": lambda: self.router_dependencies,
         }
         return special_params.get(param_name, lambda: None)()
 

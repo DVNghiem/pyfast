@@ -1,23 +1,29 @@
 # -*- coding: utf-8 -*-
-from typing import Any, List, TypeVar
+from __future__ import annotations
+
+from typing import Any, List, TypeVar, Callable
 from typing_extensions import Annotated, Doc
-from robyn import Robyn
+import inspect
 import orjson
+import asyncio
+import socket
 
 from hypern.openapi import SwaggerUI, SchemaGenerator
 from hypern.routing import Route
-from hypern.response import JSONResponse
-from hypern.logging import reset_logger
-from hypern.datastructures import Contact, License, Info
+from hypern.response import JSONResponse, HTMLResponse
+from hypern.logging import reset_logger, logger
+from hypern.datastructures import Contact, License, Info, HTTPMethod
 from hypern.scheduler import Scheduler
-from hypern.hypern import Router
+from hypern.hypern import Router, Route as InternalRoute, FunctionInfo
+from hypern.processpool import run_processes
+from hypern.exceptions import InvalidPortNumber
 
 reset_logger()
 
 AppType = TypeVar("AppType", bound="Hypern")
 
 
-class Hypern(Robyn):
+class Hypern:
     def __init__(
         self: AppType,
         routes: Annotated[
@@ -54,7 +60,7 @@ class Hypern(Robyn):
                 Read more in the
                 """
             ),
-        ] = "HyperN",
+        ] = "Hypern",
         summary: Annotated[
             str | None,
             Doc(
@@ -151,7 +157,7 @@ class Hypern(Robyn):
                 **Example**
 
                 ```python
-                app = HyperN(
+                app = Hypern(
                     license_info={
                         "name": "Apache 2.0",
                         "url": "https://www.apache.org/licenses/LICENSE-2.0.html",
@@ -172,14 +178,11 @@ class Hypern(Robyn):
         *args: Any,
         **kwargs: Any,
     ) -> None:
-        super().__init__(__file__, *args, **kwargs)
-
-        self.router = Router()
-
+        super().__init__(*args, **kwargs)
+        self.router = Router(path="/")
         self.scheduler = scheduler
-
         for route in routes:
-            self.router.routes.extend(route(self).get_routes())
+            self.router.extend_route(route(app=self).routes)
 
         if openapi_url and docs_url:
             self.add_openapi(
@@ -218,8 +221,8 @@ class Hypern(Robyn):
                 title="Swagger",
                 openapi_url=openapi_url,
             )
-            template = swagger.render_template()
-            return template
+            template = swagger.get_html_content()
+            return HTMLResponse(template)
 
     def add_middleware(self, middleware):
         setattr(middleware, "app", self)
@@ -232,7 +235,51 @@ class Hypern(Robyn):
             self.after_request(endpoint=endpoint)(after_request)
         return self
 
-    def start(self, host: str = "127.0.0.1", port: int = 8080, _check_port: bool = True):
+    def is_port_in_use(self, port: int) -> bool:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                return s.connect_ex(("localhost", port)) == 0
+        except Exception:
+            raise InvalidPortNumber(f"Invalid port number: {port}")
+
+    def start(self, host: str = "127.0.0.1", port: int = 8080, workers=1, processes=1, check_port=False):
+        if check_port:
+            while self.is_port_in_use(port):
+                logger.error("Port %s is already in use. Please use a different port.", port)
+                try:
+                    port = int(input("Enter a different port: "))
+                except Exception:
+                    logger.error("Invalid port number. Please enter a valid port number.")
+                    continue
+
         if self.scheduler:
             self.scheduler.start()
-        return super().start(host, port, _check_port)
+
+        run_processes(router=self.router, host=host, port=port, workers=workers, processes=processes)
+
+    def add_route(self, method: HTTPMethod, endpoint: str, handler: Callable[..., Any]):
+        is_async = asyncio.iscoroutinefunction(handler)
+        params = dict(inspect.signature(handler).parameters)
+        func_info = FunctionInfo(handler=handler, is_async=is_async, number_of_params=len(params), args=params, kwargs={})
+        route = InternalRoute(path=endpoint, function=func_info, method=method.name)
+        self.router.add_route(route=route)
+
+    def get(self, path):
+        """
+        The @app.get decorator to add a route with the GET method
+        """
+
+        def inner(func):
+            return self.add_route(HTTPMethod.GET, path, func)
+
+        return inner
+
+    def post(self, path):
+        """
+        The @app.post decorator to add a route with the POST method
+        """
+
+        def inner(func):
+            return self.add_route(HTTPMethod.POST, path, func)
+
+        return inner

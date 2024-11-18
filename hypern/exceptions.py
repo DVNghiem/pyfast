@@ -91,3 +91,7 @@ class Unauthorized(BaseException):
         super().__init__(msg, *args)
         self.status = 401
         self.error_code = error_code
+
+
+class InvalidPortNumber(Exception):
+    pass

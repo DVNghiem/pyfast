@@ -4,14 +4,14 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 
 // Custom Multimap class
-#[pyclass(name = "Headers")]
+#[pyclass(name = "Header")]
 #[derive(Clone, Debug, Default)]
-pub struct Headers {
+pub struct Header {
     pub headers: DashMap<String, Vec<String>>,
 }
 
 #[pymethods]
-impl Headers {
+impl Header {
     #[new]
     pub fn new(default_headers: Option<&PyDict>) -> Self {
         match default_headers {
@@ -30,9 +30,9 @@ impl Headers {
                         headers.entry(key).or_insert_with(Vec::new).push(value);
                     }
                 }
-                Headers { headers }
+                Header { headers }
             }
-            None => Headers {
+            None => Header {
                 headers: DashMap::new(),
             },
         }
@@ -105,7 +105,7 @@ impl Headers {
         self.headers.is_empty()
     }
 
-    fn __eq__(&self, other: &Headers) -> bool {
+    fn __eq__(&self, other: &Header) -> bool {
         if self.headers.is_empty() && other.headers.is_empty() {
             return true;
         }
@@ -148,12 +148,12 @@ impl Headers {
     }
 }
 
-impl Headers {
+impl Header {
     pub fn remove(&mut self, key: &str) {
         self.headers.remove(&key.to_lowercase());
     }
 
-    pub fn extend(&mut self, headers: &Headers) {
+    pub fn extend(&mut self, headers: &Header) {
         for iter in headers.headers.iter() {
             let (key, values) = iter.pair();
             let mut entry = self.headers.entry(key.clone()).or_default();
@@ -162,7 +162,7 @@ impl Headers {
     }
 
     pub fn from_hyper_headers(req_headers: &HeaderMap) -> Self {
-        let headers = Headers::default();
+        let headers = Header::default();
 
         for (key, value) in req_headers {
             let key = key.to_string().to_lowercase();

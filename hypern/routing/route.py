@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 from typing import Callable, Any, Dict, List, Union, Type, get_origin, get_args
-from robyn.router import Router as RobynRouter
-from robyn import HttpMethod, Request
+from hypern.hypern import Router, Request, Route as InternalRoute, FunctionInfo
+from hypern.datastructures import HTTPMethod
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 from enum import Enum
 
 import inspect
+import asyncio
 import yaml  # type: ignore
 
 from hypern.auth.authorization import Authorization
@@ -151,13 +152,13 @@ class Route:
         self.name = name
 
         self.http_methods = {
-            "GET": HttpMethod.GET,
-            "POST": HttpMethod.POST,
-            "PUT": HttpMethod.PUT,
-            "DELETE": HttpMethod.DELETE,
-            "PATCH": HttpMethod.PATCH,
-            "HEAD": HttpMethod.HEAD,
-            "OPTIONS": HttpMethod.OPTIONS,
+            "GET": HTTPMethod.GET,
+            "POST": HTTPMethod.POST,
+            "PUT": HTTPMethod.PUT,
+            "DELETE": HTTPMethod.DELETE,
+            "PATCH": HTTPMethod.PATCH,
+            "HEAD": HTTPMethod.HEAD,
+            "OPTIONS": HTTPMethod.OPTIONS,
         }
         self.functional_handlers = []
 
@@ -193,7 +194,6 @@ class Route:
                     "content": {"application/json": {"schema": _response_type.model_json_schema()}},
                 }
             }
-
         return yaml.dump(_docs)
 
     def _combine_path(self, path1: str, path2: str) -> str:
@@ -203,21 +203,22 @@ class Route:
             return path1 + "/" + path2
         return path1 + path2
 
+    def make_internal_route(self, handler, method) -> InternalRoute:
+        is_async = asyncio.iscoroutinefunction(handler)
+        params = dict(inspect.signature(handler).parameters)
+        func_info = FunctionInfo(handler=handler, is_async=is_async, number_of_params=len(params), args=params, kwargs={})
+        return InternalRoute(path=self.path, function=func_info, method=method)
+
     def __call__(self, app, *args: Any, **kwds: Any) -> Any:
-        router = RobynRouter()
+        router = Router("/")
 
         # Validate handlers
         if not self.endpoint and not self.functional_handlers:
             raise ValueError(f"No handler found for route: {self.path}")
 
-        default_params = {"is_const": False, "injected_dependencies": app.dependencies.get_dependency_map(app), "exception_handler": app.exception_handler}
-
         # Handle functional routes
         for h in self.functional_handlers:
-            router.add_route(
-                route_type=self.http_methods[h["method"].upper()], endpoint=self._combine_path(self.path, h["path"]), handler=h["func"], **default_params
-            )
-
+            router.add_route(self.make_internal_route(handler=h["func"], method=h["method"].upper()))
         if not self.endpoint:
             return router
 
@@ -228,9 +229,8 @@ class Route:
                 doc = self.swagger_generate(sig, func.__doc__)
                 self.endpoint.dispatch.__doc__ = doc
                 endpoint_obj = self.endpoint()
-                router.add_route(route_type=self.http_methods[name.upper()], endpoint=self.path, handler=endpoint_obj.dispatch, **default_params)
+                router.add_route(route=self.make_internal_route(endpoint_obj.dispatch, name.upper()))
                 del endpoint_obj  # free up memory
-
         return router
 
     def route(
@@ -241,8 +241,8 @@ class Route:
         **kwds: Any,
     ) -> Callable:
         def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-            async def functional_wrapper(request: Request, global_dependencies, router_dependencies) -> Any:
-                return await dispatch(func, request, global_dependencies, router_dependencies)
+            async def functional_wrapper(request: Request) -> Any:
+                return await dispatch(func, request)
 
             sig = inspect.signature(func)
             functional_wrapper.__doc__ = self.swagger_generate(sig, func.__doc__)
