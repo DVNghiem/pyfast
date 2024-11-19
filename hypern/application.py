@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from typing import Any, List, TypeVar, Callable
 from typing_extensions import Annotated, Doc
-import inspect
 import orjson
 import asyncio
 import socket
@@ -175,12 +174,22 @@ class Hypern:
                 """
             ),
         ] = None,
+        default_injectables: Annotated[
+            dict[str, Any] | None,
+            Doc(
+                """
+                A dictionary of default injectables to be passed to all routes.
+                """
+            ),
+        ] = None,
         *args: Any,
         **kwargs: Any,
     ) -> None:
         super().__init__(*args, **kwargs)
         self.router = Router(path="/")
         self.scheduler = scheduler
+        self.injectables = default_injectables or {}
+
         for route in routes:
             self.router.extend_route(route(app=self).routes)
 
@@ -204,8 +213,7 @@ class Hypern:
         openapi_url: str,
         docs_url: str,
     ):
-        @self.get(openapi_url)
-        def schema():
+        def schema(*args, **kwargs):
             schemas = SchemaGenerator(
                 {
                     "openapi": "3.0.0",
@@ -215,14 +223,20 @@ class Hypern:
             )
             return JSONResponse(content=orjson.dumps(schemas.get_schema(self)))
 
-        @self.get(docs_url)
-        def template_render():
+        def template_render(*args, **kwargs):
             swagger = SwaggerUI(
                 title="Swagger",
                 openapi_url=openapi_url,
             )
             template = swagger.get_html_content()
             return HTMLResponse(template)
+
+        self.add_route(HTTPMethod.GET, openapi_url, schema)
+        self.add_route(HTTPMethod.GET, docs_url, template_render)
+
+    def add_injectable(self, key: str, value: Any):
+        self.injectables[key] = value
+        return self
 
     def add_middleware(self, middleware):
         setattr(middleware, "app", self)
@@ -255,31 +269,10 @@ class Hypern:
         if self.scheduler:
             self.scheduler.start()
 
-        run_processes(router=self.router, host=host, port=port, workers=workers, processes=processes)
+        run_processes(host=host, port=port, workers=workers, processes=processes, router=self.router, injectables=self.injectables)
 
     def add_route(self, method: HTTPMethod, endpoint: str, handler: Callable[..., Any]):
         is_async = asyncio.iscoroutinefunction(handler)
-        params = dict(inspect.signature(handler).parameters)
-        func_info = FunctionInfo(handler=handler, is_async=is_async, number_of_params=len(params), args=params, kwargs={})
+        func_info = FunctionInfo(handler=handler, is_async=is_async)
         route = InternalRoute(path=endpoint, function=func_info, method=method.name)
         self.router.add_route(route=route)
-
-    def get(self, path):
-        """
-        The @app.get decorator to add a route with the GET method
-        """
-
-        def inner(func):
-            return self.add_route(HTTPMethod.GET, path, func)
-
-        return inner
-
-    def post(self, path):
-        """
-        The @app.post decorator to add a route with the POST method
-        """
-
-        def inner(func):
-            return self.add_route(HTTPMethod.POST, path, func)
-
-        return inner

@@ -28,13 +28,13 @@ async def run_in_threadpool(func: typing.Callable, *args, **kwargs):
     return await asyncio.to_thread(func, *args)
 
 
-async def dispatch(handler, request: Request) -> Response:
+async def dispatch(handler, request: Request, inject: typing.Dict[str, typing.Any]) -> Response:
     try:
         is_async = is_async_callable(handler)
         signature = inspect.signature(handler)
         input_handler = InputHandler(request)
         _response_type = signature.return_annotation
-        _kwargs = await input_handler.get_input_handler(signature)
+        _kwargs = await input_handler.get_input_handler(signature, inject)
 
         if is_async:
             response = await handler(**_kwargs)  # type: ignore

@@ -178,20 +178,15 @@ class FunctionInfo:
     Attributes:
         handler (Callable): The function to be called
         is_async (bool): Whether the function is async or not
-        number_of_params (int): The number of parameters the function has
-        args (dict): The arguments of the function
-        kwargs (dict): The keyword arguments of the function
     """
 
     handler: Callable
     is_async: bool
-    number_of_params: int
-    args: dict
-    kwargs: dict
 
 class SocketHeld:
     socket: Any
 
+@dataclass
 class Server:
     router: Router
     websocket_router: Any
@@ -202,6 +197,8 @@ class Server:
     def add_route(self, route: Route) -> None: ...
     def set_router(self, router: Router) -> None: ...
     def start(self, socket: SocketHeld, worker: int, processes: int) -> None: ...
+    def inject(self, key: str, value: Any) -> None: ...
+    def set_injected(self, injected: Dict[str, Any]) -> None: ...
 
 class Route:
     path: str

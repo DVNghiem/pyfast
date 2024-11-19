@@ -5,14 +5,15 @@ use crate::{
     types::{function_info::FunctionInfo, request::Request},
 };
 use http::{HeaderMap, StatusCode};
-use pyo3::{exceptions::PyValueError, prelude::*};
+use pyo3::{exceptions::PyValueError, prelude::*, types::PyDict};
 use std::{
     env,
     sync::{
         atomic::Ordering::{Relaxed, SeqCst},
         Mutex,
     },
-    thread, time::Duration,
+    thread,
+    time::Duration,
 };
 use std::{
     process::exit,
@@ -24,13 +25,14 @@ use axum::{
     extract::Request as HttpRequest,
     response::{IntoResponse, Response},
     routing::{delete, get, post, put},
-    Router as RouterServer,
+    Extension, Router as RouterServer,
 };
+
+use crate::di::DependencyInjection;
 
 static STARTED: AtomicBool = AtomicBool::new(false);
 const MAX_PAYLOAD_SIZE: &str = "MAX_PAYLOAD_SIZE";
 const DEFAULT_MAX_PAYLOAD_SIZE: usize = 1_000_000; // 1Mb
-
 
 #[pyclass]
 pub struct Server {
@@ -39,23 +41,34 @@ pub struct Server {
     startup_handler: Option<Arc<FunctionInfo>>,
     shutdown_handler: Option<Arc<FunctionInfo>>,
     excluded_response_headers_paths: Option<Vec<String>>,
+    injected: DependencyInjection,
 }
 
 #[pymethods]
 impl Server {
     #[new]
     pub fn new() -> Self {
+        let inject = DependencyInjection::new();
         Self {
             router: Arc::new(Mutex::new(Router::default())),
             websocket_router: Arc::new(WebSocketRouter::new()),
             startup_handler: None,
             shutdown_handler: None,
             excluded_response_headers_paths: None,
+            injected: inject,
         }
     }
 
     pub fn set_router(&mut self, router: Router) {
         self.router = Arc::new(Mutex::new(router));
+    }
+
+    pub fn inject(&mut self, key: &str, value: Py<PyAny>) {
+        let _ = self.injected.add_dependency(key, value);
+    }
+
+    pub fn set_injected(&mut self, injected: Py<PyDict>) {
+        self.injected = DependencyInjection::from_object(injected);
     }
 
     pub fn start(
@@ -102,6 +115,8 @@ impl Server {
                 ))
             })?;
 
+        let inject_copy = self.injected.clone();
+
         thread::spawn(move || {
             let rt = tokio::runtime::Builder::new_multi_thread()
                 .worker_threads(workers)
@@ -116,48 +131,30 @@ impl Server {
                 // tracing_subscriber::fmt()
                 // .with_max_level(tracing::Level::DEBUG)
                 // .init();
-                let mut app = RouterServer::new();
+                let mut app = RouterServer::new().with_state(inject_copy.clone());
 
                 // handle logic for each route with pyo3
                 for route in router.lock().unwrap().iter() {
                     let task_locals = task_locals.clone();
                     let route_copy = route.clone();
                     let function = route_copy.function.clone();
-                    let path = route_copy.path.clone();
                     let excluded_headers = excluded_response_headers_paths.clone();
 
+                    let handler =
+                        move |req| mapping_method(req, function, excluded_headers, task_locals);
+
                     app = match route.method.as_str() {
-                        "GET" => app.route(
-                            &path,
-                            get(move |req| {
-                                mapping_method(req, function, excluded_headers, task_locals.clone())
-                            }),
-                        ),
-                        "POST" => app.route(
-                            &path,
-                            post(move |req| {
-                                mapping_method(req, function, excluded_headers, task_locals.clone())
-                            }),
-                        ),
-                        "PUT" => app.route(
-                            &path,
-                            put(move |req| {
-                                mapping_method(req, function, excluded_headers, task_locals.clone())
-                            }),
-                        ),
-                        "DELETE" => app.route(
-                            &path,
-                            delete(move |req| {
-                                mapping_method(req, function, excluded_headers, task_locals.clone())
-                            }),
-                        ),
+                        "GET" => app.route(&route.path, get(handler)),
+                        "POST" => app.route(&route.path, post(handler)),
+                        "PUT" => app.route(&route.path, put(handler)),
+                        "DELETE" => app.route(&route.path, delete(handler)),
                         _ => app,
                     };
                 }
+                app = app.layer(Extension(inject_copy.clone()));
                 // run our app with hyper, listening globally on port 3000
                 let listener = tokio::net::TcpListener::from_std(raw_socket.into()).unwrap();
                 axum::serve(listener, app).await.unwrap();
-
             });
         });
 
@@ -192,8 +189,9 @@ async fn execute_request(
     function: FunctionInfo,
     excluded_headers: Option<Vec<String>>,
 ) -> Response {
+    let deps = req.extensions().get::<DependencyInjection>().cloned();
     let request = Request::from_request(req).await;
-    match execute_http_function(&request, &function).await {
+    match execute_http_function(&request, &function, deps).await {
         Ok(response) => {
             let mut headers = HeaderMap::new();
             for (key, value) in response.headers.headers {

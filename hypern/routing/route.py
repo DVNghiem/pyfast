@@ -205,8 +205,7 @@ class Route:
 
     def make_internal_route(self, handler, method) -> InternalRoute:
         is_async = asyncio.iscoroutinefunction(handler)
-        params = dict(inspect.signature(handler).parameters)
-        func_info = FunctionInfo(handler=handler, is_async=is_async, number_of_params=len(params), args=params, kwargs={})
+        func_info = FunctionInfo(handler=handler, is_async=is_async)
         return InternalRoute(path=self.path, function=func_info, method=method)
 
     def __call__(self, app, *args: Any, **kwds: Any) -> Any:
@@ -237,12 +236,10 @@ class Route:
         self,
         path: str,
         method: str,
-        *args: Any,
-        **kwds: Any,
     ) -> Callable:
         def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-            async def functional_wrapper(request: Request) -> Any:
-                return await dispatch(func, request)
+            async def functional_wrapper(request: Request, inject: Dict[str, Any]) -> Any:
+                return await dispatch(func, request, inject)
 
             sig = inspect.signature(func)
             functional_wrapper.__doc__ = self.swagger_generate(sig, func.__doc__)
