@@ -1,5 +1,5 @@
+use axum::http::HeaderMap;
 use dashmap::DashMap;
-use http::HeaderMap;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 

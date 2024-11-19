@@ -4,7 +4,6 @@ use crate::{
     socket::SocketHeld,
     types::{function_info::FunctionInfo, request::Request},
 };
-use http::{HeaderMap, StatusCode};
 use pyo3::{exceptions::PyValueError, prelude::*, types::PyDict};
 use std::{
     env,
@@ -21,11 +20,7 @@ use std::{
 };
 
 use axum::{
-    body::Body,
-    extract::Request as HttpRequest,
-    response::{IntoResponse, Response},
-    routing::{delete, get, post, put},
-    Extension, Router as RouterServer,
+    body::Body, extract::Request as HttpRequest, http::{HeaderMap, HeaderName, StatusCode}, response::{IntoResponse, Response}, routing::{delete, get, post, put}, Extension, Router as RouterServer
 };
 
 use crate::di::DependencyInjection;
@@ -200,7 +195,7 @@ async fn execute_request(
                     .map(|excluded| excluded.contains(&key))
                     .unwrap_or(false)
                 {
-                    let header_name = http::header::HeaderName::from_bytes(key.as_bytes()).unwrap();
+                    let header_name = HeaderName::from_bytes(key.as_bytes()).unwrap();
                     headers.insert(header_name, value.join(" ").parse().unwrap());
                 }
             }
