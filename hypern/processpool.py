@@ -31,17 +31,16 @@ def init_processpool(router: Router, socket: SocketHeld, workers: int, processes
     process_pool = []
     if sys.platform.startswith("win32") or processes == 1:
         spawn_process(router, socket, workers, 1, injectables)
-
         return process_pool
 
-    for _ in range(processes):
-        copied_socket = socket.try_clone()
-        process = Process(
-            target=spawn_process,
-            args=(router, copied_socket, workers, 1, injectables),
-        )
-        process.start()
-        process_pool.append(process)
+    # for _ in range(processes):
+    copied_socket = socket.try_clone()
+    process = Process(
+        target=spawn_process,
+        args=(router, copied_socket, workers, processes, injectables),
+    )
+    process.start()
+    process_pool.append(process)
 
     return process_pool
 

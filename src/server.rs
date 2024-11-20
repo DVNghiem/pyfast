@@ -20,7 +20,21 @@ use std::{
 };
 
 use axum::{
-    body::Body, extract::Request as HttpRequest, http::{HeaderMap, HeaderName, StatusCode}, response::{IntoResponse, Response}, routing::{delete, get, post, put}, Extension, Router as RouterServer
+    body::Body,
+    extract::Request as HttpRequest,
+    http::{HeaderMap, HeaderName, StatusCode},
+    response::{IntoResponse, Response},
+    routing::{any, delete, get, head, options, patch, post, put, trace},
+    Extension, Router as RouterServer,
+};
+
+use tower_http::{
+    trace::{DefaultOnResponse, TraceLayer},
+    LatencyUnit,
+};
+use tracing::{Level, debug};
+use tracing_subscriber::{
+    fmt, layer::SubscriberExt, util::SubscriberInitExt
 };
 
 use crate::di::DependencyInjection;
@@ -73,13 +87,23 @@ impl Server {
         workers: usize,
         processes: usize,
     ) -> PyResult<()> {
-        pyo3_log::init();
+
+        tracing_subscriber::registry()
+            .with(
+                fmt::layer()
+                    .with_target(false)
+                    .with_level(true)
+                    .with_thread_names(true)
+                    .with_thread_ids(true)
+            )
+            .init();
+        
+        // pyo3_log::init();
 
         if STARTED
             .compare_exchange(false, true, SeqCst, Relaxed)
             .is_err()
         {
-            // debug!("Robyn is already running...");
             return Ok(());
         }
 
@@ -121,11 +145,12 @@ impl Server {
                 .enable_all()
                 .build()
                 .unwrap();
+            debug!("Server start with {} workers and {} processes", workers, processes);
+            debug!("Waiting for application to start...");
+
             rt.block_on(async move {
                 let task_locals = task_locals_copy.clone();
-                // tracing_subscriber::fmt()
-                // .with_max_level(tracing::Level::DEBUG)
-                // .init();
+
                 let mut app = RouterServer::new().with_state(inject_copy.clone());
 
                 // handle logic for each route with pyo3
@@ -143,10 +168,23 @@ impl Server {
                         "POST" => app.route(&route.path, post(handler)),
                         "PUT" => app.route(&route.path, put(handler)),
                         "DELETE" => app.route(&route.path, delete(handler)),
-                        _ => app,
+                        "PATCH" => app.route(&route.path, patch(handler)),
+                        "HEAD" => app.route(&route.path, head(handler)),
+                        "OPTIONS" => app.route(&route.path, options(handler)),
+                        "TRACE" => app.route(&route.path, trace(handler)),
+                        // Handle any custom methods using the any() method
+                        _ => app.route(&route.path, any(handler)),
                     };
                 }
                 app = app.layer(Extension(inject_copy.clone()));
+                app = app.layer(
+                    TraceLayer::new_for_http().on_response(
+                        DefaultOnResponse::new()
+                            .level(Level::INFO)
+                            .latency_unit(LatencyUnit::Millis),
+                    ),
+                );
+                debug!("Application started");
                 // run our app with hyper, listening globally on port 3000
                 let listener = tokio::net::TcpListener::from_std(raw_socket.into()).unwrap();
                 axum::serve(listener, app).await.unwrap();
