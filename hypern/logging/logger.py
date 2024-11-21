@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 import logging
-from typing import Optional, Literal
-from copy import copy
-import click
 import sys
+from copy import copy
+from typing import Literal, Optional
+
+import click
 
 TRACE_LOG_LEVEL = 5
 

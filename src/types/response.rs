@@ -1,3 +1,7 @@
+use axum::{
+    body::Body,
+    http::{HeaderMap, HeaderName, Response as ServerResponse, StatusCode},
+};
 use pyo3::{
     prelude::*,
     types::{PyBytes, PyDict},
@@ -5,7 +9,6 @@ use pyo3::{
 
 use super::header::Header;
 use crate::utils::get_description_from_pyobject;
-
 
 #[derive(Debug, Clone, FromPyObject)]
 pub struct Response {
@@ -47,6 +50,25 @@ impl Response {
             description: "Internal server error".to_owned().into_bytes(),
             file_path: None,
         }
+    }
+
+    pub fn to_axum_response(&self) -> axum::http::Response<axum::body::Body> {
+        let mut headers = HeaderMap::new();
+        for (key, value) in self.headers.headers.clone() {
+            let header_name = HeaderName::from_bytes(key.as_bytes()).unwrap();
+            headers.insert(header_name, value.join(" ").parse().unwrap());
+        }
+
+        let mut response_builder =
+            ServerResponse::builder().status(StatusCode::from_u16(self.status_code).unwrap());
+        for (key, value) in headers {
+            if let Some(k) = key {
+                response_builder = response_builder.header(k, value);
+            }
+        }
+        response_builder
+            .body(Body::from(self.description.clone()))
+            .unwrap()
     }
 }
 

@@ -1,6 +1,7 @@
-from sqlalchemy.types import TypeDecorator
-from sqlalchemy.dialects.postgresql import DATERANGE
 from datetime import datetime
+
+from sqlalchemy.dialects.postgresql import DATERANGE
+from sqlalchemy.types import TypeDecorator
 
 
 class DateRangeField(TypeDecorator):

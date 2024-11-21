@@ -1,5 +1,6 @@
-from sqlalchemy.types import TypeDecorator, String
 import re
+
+from sqlalchemy.types import String, TypeDecorator
 
 
 class ColorField(TypeDecorator):

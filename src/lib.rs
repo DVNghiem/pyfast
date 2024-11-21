@@ -11,6 +11,7 @@ mod types;
 mod socket;
 mod executor;
 mod di;
+mod middlewares;
 
 #[pymodule]
 fn hypern(_py: Python<'_>, m: &PyModule) -> PyResult<()>  {
@@ -37,7 +38,7 @@ fn hypern(_py: Python<'_>, m: &PyModule) -> PyResult<()>  {
     m.add_class::<types::request::PyRequest>()?;
     m.add_class::<types::request::PyBodyData>()?;
     m.add_class::<types::request::PyUploadedFile>()?;
-    m.add_class::<types::multimap::QueryParams>()?;
+    m.add_class::<types::query::QueryParams>()?;
 
     pyo3::prepare_freethreaded_python();
     Ok(())

@@ -1,16 +1,18 @@
 # -*- coding: utf-8 -*-
-from typing import Callable, Any, Dict, List, Union, Type, get_origin, get_args
-from hypern.hypern import Router, Request, Route as InternalRoute, FunctionInfo
-from hypern.datastructures import HTTPMethod
+import asyncio
+import inspect
+from enum import Enum
+from typing import Any, Callable, Dict, List, Type, Union, get_args, get_origin
+
+import yaml  # type: ignore
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
-from enum import Enum
-
-import inspect
-import asyncio
-import yaml  # type: ignore
 
 from hypern.auth.authorization import Authorization
+from hypern.datastructures import HTTPMethod
+from hypern.hypern import FunctionInfo, Request, Router
+from hypern.hypern import Route as InternalRoute
+
 from .dispatcher import dispatch
 
 
@@ -53,7 +55,7 @@ class SchemaProcessor:
     @staticmethod
     def process_enum(annotation: Type[Enum]) -> Dict[str, Any]:
         """Process Enum types"""
-        return {"type": "string", "enum": [e.value for e in annotation]}
+        return {"type": "string", "enum": [e.value for e in annotation.__members__.values()]}
 
     @staticmethod
     def process_primitive(annotation: type) -> Dict[str, str]:

@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 use tempfile::NamedTempFile;
 
-use super::{header::Header, multimap::QueryParams};
+use super::{header::Header, query::QueryParams};
 
 #[derive(Debug, Clone, FromPyObject)]
 pub struct UploadedFile {

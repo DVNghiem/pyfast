@@ -1,10 +1,17 @@
 use crate::{
-    executor::execute_http_function,
+    executor::{execute_http_function, execute_middleware_function},
+    middlewares::base::Middleware,
     router::{router::Router, ws::WebSocketRouter},
     socket::SocketHeld,
-    types::{function_info::FunctionInfo, request::Request},
+    types::{
+        function_info::FunctionInfo, middleware::MiddlewareReturn, request::Request,
+    },
 };
-use pyo3::{exceptions::PyValueError, prelude::*, types::PyDict};
+use pyo3::{
+    exceptions::PyValueError,
+    prelude::*,
+    types::PyDict,
+};
 use std::{
     env,
     sync::{
@@ -22,8 +29,8 @@ use std::{
 use axum::{
     body::Body,
     extract::Request as HttpRequest,
-    http::{HeaderMap, HeaderName, StatusCode},
-    response::{IntoResponse, Response},
+    http::StatusCode,
+    response::{IntoResponse, Response as ServerResponse},
     routing::{any, delete, get, head, options, patch, post, put, trace},
     Extension, Router as RouterServer,
 };
@@ -32,10 +39,8 @@ use tower_http::{
     trace::{DefaultOnResponse, TraceLayer},
     LatencyUnit,
 };
-use tracing::{Level, debug};
-use tracing_subscriber::{
-    fmt, layer::SubscriberExt, util::SubscriberInitExt
-};
+use tracing::{debug, Level};
+use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::di::DependencyInjection;
 
@@ -49,8 +54,8 @@ pub struct Server {
     websocket_router: Arc<WebSocketRouter>,
     startup_handler: Option<Arc<FunctionInfo>>,
     shutdown_handler: Option<Arc<FunctionInfo>>,
-    excluded_response_headers_paths: Option<Vec<String>>,
     injected: DependencyInjection,
+    middlewares: Middleware,
 }
 
 #[pymethods]
@@ -58,13 +63,14 @@ impl Server {
     #[new]
     pub fn new() -> Self {
         let inject = DependencyInjection::new();
+        let middlewares = Middleware::new().unwrap();
         Self {
             router: Arc::new(Mutex::new(Router::default())),
             websocket_router: Arc::new(WebSocketRouter::new()),
             startup_handler: None,
             shutdown_handler: None,
-            excluded_response_headers_paths: None,
             injected: inject,
+            middlewares,
         }
     }
 
@@ -80,6 +86,14 @@ impl Server {
         self.injected = DependencyInjection::from_object(injected);
     }
 
+    pub fn set_before_hooks(&mut self, hooks: Vec<FunctionInfo>) {
+        self.middlewares.set_before_hooks(hooks);
+    }
+
+    pub fn set_after_hooks(&mut self, hooks: Vec<FunctionInfo>) {
+        self.middlewares.set_after_hooks(hooks);
+    }
+
     pub fn start(
         &mut self,
         py: Python,
@@ -87,17 +101,16 @@ impl Server {
         workers: usize,
         processes: usize,
     ) -> PyResult<()> {
-
         tracing_subscriber::registry()
             .with(
                 fmt::layer()
                     .with_target(false)
                     .with_level(true)
                     .with_thread_names(true)
-                    .with_thread_ids(true)
+                    .with_thread_ids(true),
             )
             .init();
-        
+
         // pyo3_log::init();
 
         if STARTED
@@ -119,8 +132,6 @@ impl Server {
         let _startup_handler = self.startup_handler.clone();
         let shutdown_handler = self.shutdown_handler.clone();
 
-        let excluded_response_headers_paths = self.excluded_response_headers_paths.clone();
-
         let task_locals = pyo3_asyncio::TaskLocals::new(event_loop).copy_context(py)?;
         let task_locals_copy = task_locals.clone();
 
@@ -135,6 +146,7 @@ impl Server {
             })?;
 
         let inject_copy = self.injected.clone();
+        let copy_middlewares = self.middlewares.clone();
 
         thread::spawn(move || {
             let rt = tokio::runtime::Builder::new_multi_thread()
@@ -145,12 +157,14 @@ impl Server {
                 .enable_all()
                 .build()
                 .unwrap();
-            debug!("Server start with {} workers and {} processes", workers, processes);
+            debug!(
+                "Server start with {} workers and {} processes",
+                workers, processes
+            );
             debug!("Waiting for application to start...");
 
             rt.block_on(async move {
                 let task_locals = task_locals_copy.clone();
-
                 let mut app = RouterServer::new().with_state(inject_copy.clone());
 
                 // handle logic for each route with pyo3
@@ -158,10 +172,16 @@ impl Server {
                     let task_locals = task_locals.clone();
                     let route_copy = route.clone();
                     let function = route_copy.function.clone();
-                    let excluded_headers = excluded_response_headers_paths.clone();
 
-                    let handler =
-                        move |req| mapping_method(req, function, excluded_headers, task_locals);
+                    let copy_middlewares_clone = copy_middlewares.clone();
+                    let handler = move |req| {
+                        mapping_method(
+                            req,
+                            function,
+                            task_locals,
+                            copy_middlewares_clone.clone(),
+                        )
+                    };
 
                     app = match route.method.as_str() {
                         "GET" => app.route(&route.path, get(handler)),
@@ -217,54 +237,67 @@ impl Server {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn execute_request(
     req: HttpRequest<Body>,
     function: FunctionInfo,
-    excluded_headers: Option<Vec<String>>,
-) -> Response {
+    middlewares: Middleware,
+) -> ServerResponse {
     let deps = req.extensions().get::<DependencyInjection>().cloned();
-    let request = Request::from_request(req).await;
-    match execute_http_function(&request, &function, deps).await {
-        Ok(response) => {
-            let mut headers = HeaderMap::new();
-            for (key, value) in response.headers.headers {
-                if !excluded_headers
-                    .as_ref()
-                    .map(|excluded| excluded.contains(&key))
-                    .unwrap_or(false)
-                {
-                    let header_name = HeaderName::from_bytes(key.as_bytes()).unwrap();
-                    headers.insert(header_name, value.join(" ").parse().unwrap());
-                }
-            }
+    let mut request = Request::from_request(req).await;
 
-            let mut response_builder =
-                Response::builder().status(StatusCode::from_u16(response.status_code).unwrap());
-            for (key, value) in headers {
-                if let Some(k) = key {
-                    response_builder = response_builder.header(k, value);
-                }
+    for before_middleware in middlewares.get_before_hooks() {
+        request = match execute_middleware_function(&request, &before_middleware).await {
+            Ok(MiddlewareReturn::Request(r)) => r,
+            Ok(MiddlewareReturn::Response(r)) => {
+                return r.to_axum_response();
             }
-            response_builder
-                .body(Body::from(response.description))
-                .unwrap()
-        }
-        Err(e) => Response::builder()
-            .status(StatusCode::INTERNAL_SERVER_ERROR)
-            .body(Body::from(format!("Error: {}", e)))
-            .unwrap(),
+            Err(e) => {
+                return ServerResponse::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .body(Body::from(format!("Error: {}", e)))
+                    .unwrap();
+            }
+        };
     }
+
+    let mut response = execute_http_function(&request, &function, deps)
+        .await
+        .unwrap();
+
+    for after_middleware in middlewares.get_after_hooks() {
+        response = match execute_middleware_function(&response, &after_middleware).await {
+            Ok(MiddlewareReturn::Request(_)) => {
+                return ServerResponse::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .body(Body::from("Middleware returned a response"))
+                    .unwrap();
+            }
+            Ok(MiddlewareReturn::Response(r)) => {
+                let response = r;
+                response
+            }
+            Err(e) => {
+                return ServerResponse::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .body(Body::from(e.to_string()))
+                    .unwrap();
+            }
+        };
+    }
+
+    response.to_axum_response()
 }
 
 async fn mapping_method(
     req: HttpRequest<Body>,
     function: FunctionInfo,
-    excluded_headers: Option<Vec<String>>,
     task_locals: pyo3_asyncio::TaskLocals,
+    middlewares: Middleware,
 ) -> impl IntoResponse {
     pyo3_asyncio::tokio::scope(
         task_locals,
-        execute_request(req, function, excluded_headers),
+        execute_request(req, function, middlewares),
     )
     .await
 }

@@ -1,8 +1,9 @@
 use pyo3::{prelude::*, types::PyDict};
 
+use anyhow::Result;
 use crate::{
     di::DependencyInjection,
-    types::{function_info::FunctionInfo, request::Request, response::Response},
+    types::{function_info::FunctionInfo, middleware::MiddlewareReturn, request::Request, response::Response},
 };
 
 #[inline]
@@ -51,4 +52,37 @@ pub async fn execute_http_function(
     Python::with_gil(|py| -> PyResult<Response> {
         get_function_output(function, py, request, deps)?.extract()
     })
+}
+
+
+#[inline]
+pub async fn execute_middleware_function<T>(
+    input: &T,
+    function: &FunctionInfo,
+) -> Result<MiddlewareReturn>
+where
+    T: for<'a> FromPyObject<'a> + ToPyObject,
+{
+    if function.is_async {
+        let output: Py<PyAny> = Python::with_gil(|py| {
+            pyo3_asyncio::tokio::into_future(get_function_output(function, py, input, None)?)
+        })?
+        .await?;
+
+        Python::with_gil(|py| -> Result<MiddlewareReturn> {
+            let output_response = output.extract::<Response>(py);
+            match output_response {
+                Ok(o) => Ok(MiddlewareReturn::Response(o)),
+                Err(_) => Ok(MiddlewareReturn::Request(output.extract::<Request>(py)?)),
+            }
+        })
+    } else {
+        Python::with_gil(|py| -> Result<MiddlewareReturn> {
+            let output = get_function_output(function, py, input, None)?;
+            match output.extract::<Response>() {
+                Ok(o) => Ok(MiddlewareReturn::Response(o)),
+                Err(_) => Ok(MiddlewareReturn::Request(output.extract::<Request>()?)),
+            }
+        })
+    }
 }

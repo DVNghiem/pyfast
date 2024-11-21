@@ -1,21 +1,24 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-from typing import Any, List, TypeVar, Callable
-from typing_extensions import Annotated, Doc
-import orjson
 import asyncio
 import socket
+from typing import Any, Callable, List, TypeVar
 
-from hypern.openapi import SwaggerUI, SchemaGenerator
-from hypern.routing import Route
-from hypern.response import JSONResponse, HTMLResponse
-from hypern.logging import reset_logger, logger
-from hypern.datastructures import Contact, License, Info, HTTPMethod
-from hypern.scheduler import Scheduler
-from hypern.hypern import Router, Route as InternalRoute, FunctionInfo
-from hypern.processpool import run_processes
+import orjson
+from typing_extensions import Annotated, Doc
+
+from hypern.datastructures import Contact, HTTPMethod, Info, License
 from hypern.exceptions import InvalidPortNumber
+from hypern.hypern import FunctionInfo, Router
+from hypern.hypern import Route as InternalRoute
+from hypern.logging import logger, reset_logger
+from hypern.openapi import SchemaGenerator, SwaggerUI
+from hypern.processpool import run_processes
+from hypern.response import HTMLResponse, JSONResponse
+from hypern.routing import Route
+from hypern.scheduler import Scheduler
+from hypern.middleware import Middleware
 
 reset_logger()
 
@@ -189,6 +192,8 @@ class Hypern:
         self.router = Router(path="/")
         self.scheduler = scheduler
         self.injectables = default_injectables or {}
+        self.middleware_before_request = []
+        self.middleware_after_request = []
 
         for route in routes:
             self.router.extend_route(route(app=self).routes)
@@ -234,19 +239,37 @@ class Hypern:
         self.add_route(HTTPMethod.GET, openapi_url, schema)
         self.add_route(HTTPMethod.GET, docs_url, template_render)
 
-    def add_injectable(self, key: str, value: Any):
+    def before_request(self):
+        def decorator(func):
+            is_async = asyncio.iscoroutinefunction(func)
+            func_info = FunctionInfo(handler=func, is_async=is_async)
+            self.middleware_before_request.append(func_info)
+            return func
+
+        return decorator
+
+    def after_request(self):
+        def decorator(func):
+            is_async = asyncio.iscoroutinefunction(func)
+            func_info = FunctionInfo(handler=func, is_async=is_async)
+            self.middleware_after_request.append(func_info)
+            return func
+
+        return decorator
+
+    def inject(self, key: str, value: Any):
         self.injectables[key] = value
         return self
 
-    def add_middleware(self, middleware):
+    def add_middleware(self, middleware: Middleware):
         setattr(middleware, "app", self)
         before_request = getattr(middleware, "before_request", None)
         after_request = getattr(middleware, "after_request", None)
-        endpoint = getattr(middleware, "endpoint", None)
+
         if before_request:
-            self.before_request(endpoint=endpoint)(before_request)
+            self.before_request()(before_request)
         if after_request:
-            self.after_request(endpoint=endpoint)(after_request)
+            self.after_request()(after_request)
         return self
 
     def is_port_in_use(self, port: int) -> bool:
@@ -269,7 +292,16 @@ class Hypern:
         if self.scheduler:
             self.scheduler.start()
 
-        run_processes(host=host, port=port, workers=workers, processes=processes, router=self.router, injectables=self.injectables)
+        run_processes(
+            host=host,
+            port=port,
+            workers=workers,
+            processes=processes,
+            router=self.router,
+            injectables=self.injectables,
+            before_request=self.middleware_before_request,
+            after_request=self.middleware_after_request,
+        )
 
     def add_route(self, method: HTTPMethod, endpoint: str, handler: Callable[..., Any]):
         is_async = asyncio.iscoroutinefunction(handler)

@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-from typing import Dict, Any
+import typing
+from typing import Any, Dict
+
+import orjson
 
 from hypern.hypern import Request, Response
 from hypern.response import JSONResponse
-import typing
-import orjson
 
 from .dispatcher import dispatch
 

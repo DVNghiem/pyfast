@@ -1,17 +1,18 @@
 # -*- coding: utf-8 -*-
-from datetime import datetime
-from contextvars import ContextVar, Token
-from typing import Union, Optional, Dict
-import traceback
 import threading
+import traceback
+from contextlib import asynccontextmanager
+from contextvars import ContextVar, Token
+from datetime import datetime
+from typing import Dict, Optional, Union
+from uuid import uuid4
 
 from robyn import Request, Response
-from sqlalchemy.ext.asyncio import AsyncSession, async_scoped_session, AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_scoped_session
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.sql.expression import Delete, Insert, Update
-from contextlib import asynccontextmanager
+
 from .repository import Model, PostgresRepository
-from uuid import uuid4
 
 
 class ContextStore:
@@ -168,9 +169,9 @@ class SqlConfig:
         return response
 
     def init_app(self, app):
-        app.inject_global(get_session=self.get_session)
-        app.before_request(endpoint=None)(self.before_request)
-        app.after_request(endpoint=None)(self.after_request)
+        app.inject("get_session", self.get_session)
+        app.before_request()(self.before_request)
+        app.after_request()(self.after_request)
 
 
 __all__ = ["Model", "PostgresRepository", "SqlConfig"]
