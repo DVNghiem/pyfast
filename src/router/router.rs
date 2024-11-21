@@ -1,6 +1,6 @@
-use pyo3::prelude::*;
-use pyo3::exceptions::PyValueError;
 use super::route::Route;
+use pyo3::exceptions::PyValueError;
+use pyo3::prelude::*;
 
 /// Contains the thread safe hashmaps of different routes
 #[pyclass]
@@ -24,7 +24,7 @@ impl Router {
     }
 
     /// Add a new route to the router
-    pub fn add_route(&mut self, route: Route) -> PyResult<()> {
+    pub fn add_route(&mut self, mut route: Route) -> PyResult<()> {
         // Validate route before adding
         if !route.is_valid() {
             return Err(PyValueError::new_err("Invalid route configuration"));
@@ -32,10 +32,15 @@ impl Router {
 
         // Check for duplicate routes
         if self.has_duplicate_route(&route) {
-            return Err(PyValueError::new_err(
-                format!("Route {} {} already exists", route.method, route.path)
-            ));
+            return Err(PyValueError::new_err(format!(
+                "Route {} {} already exists",
+                route.method, route.path
+            )));
         }
+
+        // get full path and update to route
+        let full_path = self.get_full_path(&route.path);
+        route.update_path(&full_path);
 
         self.routes.push(route);
         // Sort routes after adding new one
@@ -45,7 +50,6 @@ impl Router {
 
     // extend list route
     pub fn extend_route(&mut self, routes: Vec<Route>) -> PyResult<()> {
-
         for route in routes {
             let _ = self.add_route(route);
         }
@@ -54,9 +58,11 @@ impl Router {
 
     /// Remove a route by path and method
     pub fn remove_route(&mut self, path: &str, method: &str) -> PyResult<bool> {
-        if let Some(index) = self.routes.iter().position(|r| 
-            r.path == path && r.method.to_uppercase() == method.to_uppercase()
-        ) {
+        if let Some(index) = self
+            .routes
+            .iter()
+            .position(|r| r.path == path && r.method.to_uppercase() == method.to_uppercase())
+        {
             self.routes.remove(index);
             Ok(true)
         } else {
@@ -67,7 +73,9 @@ impl Router {
     /// Get route by path and method
     #[pyo3(name = "get_route")]
     pub fn get_route_py(&self, path: &str, method: &str) -> PyResult<Option<Route>> {
-        Ok(self.routes.iter()
+        Ok(self
+            .routes
+            .iter()
             .find(|r| r.matches(path, method))
             .cloned())
     }
@@ -75,7 +83,8 @@ impl Router {
     /// Get all routes for a specific path
     #[pyo3(name = "get_routes_by_path")]
     pub fn get_routes_by_path_py(&self, path: &str) -> Vec<Route> {
-        self.routes.iter()
+        self.routes
+            .iter()
             .filter(|r| r.path == path)
             .cloned()
             .collect()
@@ -84,7 +93,8 @@ impl Router {
     /// Get all routes for a specific HTTP method
     #[pyo3(name = "get_routes_by_method")]
     pub fn get_routes_by_method_py(&self, method: &str) -> Vec<Route> {
-        self.routes.iter()
+        self.routes
+            .iter()
             .filter(|r| r.method.to_uppercase() == method.to_uppercase())
             .cloned()
             .collect()
@@ -108,7 +118,8 @@ impl Router {
     /// Get routes with parameters
     #[pyo3(name = "get_parameterized_routes")]
     pub fn get_parameterized_routes_py(&self) -> Vec<Route> {
-        self.routes.iter()
+        self.routes
+            .iter()
             .filter(|r| r.has_parameters())
             .cloned()
             .collect()
@@ -129,6 +140,8 @@ impl Router {
         let route = route_path.trim_start_matches('/');
         if base.is_empty() {
             format!("/{}", route)
+        } else if route.is_empty() {
+            base.to_string()
         } else {
             format!("{}/{}", base, route)
         }
@@ -141,16 +154,25 @@ impl Router {
 
     /// Get string representation of router
     fn __str__(&self) -> PyResult<String> {
-        Ok(format!("Router(base_path='{}', routes={})", self.path, self.routes.len()))
+        Ok(format!(
+            "Router(base_path='{}', routes={})",
+            self.path,
+            self.routes.len()
+        ))
     }
 
     /// Get detailed representation of router
     fn __repr__(&self) -> PyResult<String> {
-        let routes_str: Vec<String> = self.routes.iter()
+        let routes_str: Vec<String> = self
+            .routes
+            .iter()
             .map(|r| format!("\n  {} {}", r.method, r.path))
             .collect();
-        Ok(format!("Router(base_path='{}', routes:[{}]\n])", 
-            self.path, routes_str.join("")))
+        Ok(format!(
+            "Router(base_path='{}', routes:[{}]\n])",
+            self.path,
+            routes_str.join("")
+        ))
     }
 
     // Find most specific matching route for a path
@@ -167,10 +189,9 @@ impl Router {
 
     // Helper method to check for duplicate routes
     fn has_duplicate_route(&self, new_route: &Route) -> bool {
-        self.routes.iter().any(|r| 
-            r.path == new_route.path && 
-            r.method.to_uppercase() == new_route.method.to_uppercase()
-        )
+        self.routes.iter().any(|r| {
+            r.path == new_route.path && r.method.to_uppercase() == new_route.method.to_uppercase()
+        })
     }
 
     // Sort routes by specificity and method
@@ -181,7 +202,7 @@ impl Router {
             if path_order != std::cmp::Ordering::Equal {
                 return path_order;
             }
-            
+
             // Then compare by method priority
             a.get_method_priority().cmp(&b.get_method_priority())
         });
@@ -195,7 +216,8 @@ impl Router {
         }
 
         // Then try parameterized routes
-        self.routes.iter()
+        self.routes
+            .iter()
             .filter(|r| r.method.to_uppercase() == method.to_uppercase())
             .find(|r| self.path_matches_pattern(path, &r.path))
     }
@@ -209,9 +231,9 @@ impl Router {
             return false;
         }
 
-        path_segments.iter().zip(pattern_segments.iter())
-            .all(|(path_seg, pattern_seg)| {
-                pattern_seg.starts_with(':') || path_seg == pattern_seg
-            })
+        path_segments
+            .iter()
+            .zip(pattern_segments.iter())
+            .all(|(path_seg, pattern_seg)| pattern_seg.starts_with(':') || path_seg == pattern_seg)
     }
 }

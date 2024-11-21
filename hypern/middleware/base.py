@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from robyn import Response, Request
+from hypern.hypern import Response, Request
 
 
 # The `Middleware` class is an abstract base class with abstract methods `before_request` and

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from hypern import Hypern, Request, Response, jsonify
+from hypern import Hypern, Request, Response
 from hypern.routing import HTTPEndpoint, Route
 from hypern.response import JSONResponse, HTMLResponse, PlainTextResponse, RedirectResponse, FileResponse
 
@@ -17,7 +17,7 @@ class DefaultRoute(HTTPEndpoint):
 
 class RequestFile(HTTPEndpoint):
     def post(self, request: Request):
-        print(request.files)
+        print(request.body.files)
         return Response(
             status_code=200,
             description="multipart form data",
@@ -27,12 +27,12 @@ class RequestFile(HTTPEndpoint):
 
 class SyncQuery(HTTPEndpoint):
     def get(self, request: Request):
-        return jsonify({"message": MESSAGE})
+        return JSONResponse({"message": MESSAGE})
 
 
 class AsyncQuery(HTTPEndpoint):
     async def get(self, request: Request):
-        return jsonify({"message": MESSAGE})
+        return JSONResponse({"message": MESSAGE})
 
 
 class ResponseObject(HTTPEndpoint):
@@ -92,22 +92,22 @@ functional_route = Route("/functional")
 
 @functional_route.get("/default")
 def get(request: Request, query_params: ModelRequest):
-    return jsonify({"message": MESSAGE})
+    return JSONResponse({"message": MESSAGE})
 
 
 @functional_route.post("/default")
 def post(request: Request, global_dependencies):
-    return jsonify({"message": MESSAGE})
+    return JSONResponse({"message": MESSAGE})
 
 
 @functional_route.put("/default")
 def put(request: Request, router_dependencies):
-    return jsonify({"message": MESSAGE})
+    return JSONResponse({"message": MESSAGE})
 
 
 @functional_route.delete("/default")
 def delete(request: Request):
-    return jsonify({"message": MESSAGE})
+    return JSONResponse({"message": MESSAGE})
 
 
 routes = [
@@ -126,6 +126,8 @@ routes = [
 ]
 
 app = Hypern(routes=routes)
+app.inject("global_dependencies", "global_dependencies")
+app.inject("router_dependencies", "router_dependencies")
 
 
 # --- Global ---
@@ -138,26 +140,6 @@ def global_before_request(request: Request):
 @app.after_request()
 def global_after_request(response: Response):
     response.headers.set("global_after", "global_after_request")
-    return response
-
-
-@app.get("/sync/global/middlewares")
-def sync_global_middlewares(request: Request):
-    assert "global_before" in request.headers
-    assert request.headers.get("global_before") == "global_before_request"
-    return "sync global middlewares"
-
-
-@app.before_request("/sync/middlewares")
-def sync_before_request(request: Request):
-    request.headers.set("before", "sync_before_request")
-    return request
-
-
-@app.after_request("/sync/middlewares")
-def sync_after_request(response: Response):
-    response.headers.set("after", "sync_after_request")
-    response.description = response.description + " after"
     return response
 
 

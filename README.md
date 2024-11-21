@@ -3,7 +3,7 @@
 
 Hypern: A Versatile Python and Rust Framework
 
-Hypern is a flexible, open-source framework built on the [Robyn](https://github.com/sparckles/Robyn/), designed to jumpstart your high-performance web development endeavors. By providing a pre-configured structure and essential components, Hypern empowers you to rapidly develop custom web applications that leverage the combined power of Python and Rust.
+Hypern is a flexible, open-source framework built on the [Axum](https://github.com/tokio-rs/axum), designed to jumpstart your high-performance web development endeavors. By providing a pre-configured structure and essential components, Hypern empowers you to rapidly develop custom web applications that leverage the combined power of Python and Rust.
 
 With Hypern, you can seamlessly integrate asynchronous features and build scalable solutions for RESTful APIs and dynamic web applications. Its intuitive design and robust tooling allow developers to focus on creating high-quality code while maximizing performance. Embrace the synergy of Python and Rust to elevate your web development experience.
 
@@ -30,7 +30,7 @@ poetry install --with dev --with test
 ```
 pre-commit install
 ```
-- Build & install Robyn Rust package
+- Build & install Rust package
 ```
 maturin develop
 ```
@@ -39,7 +39,7 @@ maturin develop
 
 ### 🏃 Run your code
 
-This using default CLI Robyn, you can see bellow. You will then have access to a server on the `localhost:5005`,
+You will then have access to a server on the `localhost:5005`,
 ```python
 # main.py
 from hypern import Hypern
@@ -47,7 +47,7 @@ from hypern.routing import Route, HTTPEndpoint
 
 class MyEndpoint(HTTPEndpoint):
     
-    async def get(self, global_dependencies):
+    async def get(self, request):
         return {"data": "Hello World"}
 
 routing = [
@@ -63,33 +63,34 @@ if __name__ == "__main__":
 ```
 $ python3 main.py
 ```
-
-To see the usage
-
-```
-usage: main.py [-h] [--processes PROCESSES] [--workers WORKERS] [--dev] [--log-level LOG_LEVEL]
-
-options:
-  -h, --help                show this help message and exit
-  --processes PROCESSES     Choose the number of processes. [Default: 1]
-  --workers WORKERS         Choose the number of workers. [Default: 1]
-  --dev                     Development mode. It restarts the server based on file changes.
-  --log-level LOG_LEVEL     Set the log level name
-  --create                  Create a new project template.
-  --docs                    Open the Robyn documentation.
-  --open-browser            Open the browser on successful start.
-```
-
-Log level can be `DEBUG`, `INFO`, `WARNING`, or `ERROR`.
-
 You can open swagger UI at path `/docs` 
 
 
 ## 💡 Features
 
-Comming Soon !
+### ⚡ High Performance
+- Rust-powered core with Python flexibility
+- Multi-process architecture for optimal CPU utilization
+- Async/await support for non-blocking operations
+- Built on top of production-ready Axum web framework
+
+### 🛠 Development Experience
+- Type hints and IDE support
+- Built-in Swagger/OpenAPI documentation
+- Hot reload during development
+- Comprehensive error handling and logging
+
+### 🔌 Integration & Extensions
+- Easy dependency injection
+- Middleware support (before/after request hooks)
+- WebSocket support (Comming soon)
+- Background task scheduling
+- File upload handling
+
+### 🔒 Security
+- Built-in authentication/authorization (Comming soon)
+- CORS configuration
+- Rate limiting
+- Request validation
 
 
-## ✨ Special thanks
-
-Special thanks to the [PyO3](https://pyo3.rs/v0.13.2/) community and [Robyn](https://github.com/sparckles/Robyn) for their amazing libraries 💖

@@ -2,7 +2,7 @@ import time
 from abc import ABC, abstractmethod
 from threading import Lock
 
-from robyn import Request, Response
+from hypern.hypern import Request, Response
 
 from .base import Middleware
 

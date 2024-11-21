@@ -39,8 +39,7 @@ class ParamParser:
         return lambda: dict(self.request.path_params.items())
 
     def _parse_form_data(self) -> dict:
-        form_data = {k: v for k, v in self.request.form_data.items()}
-        return form_data if form_data else self.request.json()
+        return self.request.json()
 
 
 class InputHandler:
