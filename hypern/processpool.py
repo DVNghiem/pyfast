@@ -1,9 +1,11 @@
 import asyncio
-from multiprocess import Process
 import signal
 import sys
-from typing import List, Dict, Any
-from .hypern import SocketHeld, Server, Router, FunctionInfo
+from typing import Any, Dict, List
+
+from multiprocess import Process
+
+from .hypern import FunctionInfo, Router, Server, SocketHeld
 from .logging import logger
 
 
@@ -17,10 +19,11 @@ def run_processes(
     injectables: Dict[str, Any],
     before_request: List[FunctionInfo],
     after_request: List[FunctionInfo],
+    response_headers: Dict[str, str],
 ) -> List[Process]:
     socket = SocketHeld(host, port)
 
-    process_pool = init_processpool(router, socket, workers, processes, max_blocking_threads, injectables, before_request, after_request)
+    process_pool = init_processpool(router, socket, workers, processes, max_blocking_threads, injectables, before_request, after_request, response_headers)
 
     def terminating_signal_handler(_sig, _frame):
         logger.info("Terminating server!!")
@@ -46,6 +49,7 @@ def init_processpool(
     injectables: Dict[str, Any],
     before_request: List[FunctionInfo],
     after_request: List[FunctionInfo],
+    response_headers: Dict[str, str],
 ) -> List[Process]:
     process_pool = []
 
@@ -53,7 +57,7 @@ def init_processpool(
         copied_socket = socket.try_clone()
         process = Process(
             target=spawn_process,
-            args=(router, copied_socket, workers, max_blocking_threads, injectables, before_request, after_request),
+            args=(router, copied_socket, workers, max_blocking_threads, injectables, before_request, after_request, response_headers),
         )
         process.start()
         process_pool.append(process)
@@ -83,6 +87,7 @@ def spawn_process(
     injectables: Dict[str, Any],
     before_request: List[FunctionInfo],
     after_request: List[FunctionInfo],
+    response_headers: Dict[str, str],
 ):
     loop = initialize_event_loop()
 
@@ -91,6 +96,7 @@ def spawn_process(
     server.set_injected(injected=injectables)
     server.set_before_hooks(hooks=before_request)
     server.set_after_hooks(hooks=after_request)
+    server.set_response_headers(headers=response_headers)
 
     try:
         server.start(socket, workers, max_blocking_threads)

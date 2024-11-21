@@ -3,16 +3,11 @@ use crate::{
     middlewares::base::Middleware,
     router::{router::Router, ws::WebSocketRouter},
     socket::SocketHeld,
-    types::{
-        function_info::FunctionInfo, middleware::MiddlewareReturn, request::Request,
-    },
+    types::{function_info::FunctionInfo, middleware::MiddlewareReturn, request::Request},
 };
-use pyo3::{
-    exceptions::PyValueError,
-    prelude::*,
-    types::PyDict,
-};
+use pyo3::{exceptions::PyValueError, prelude::*, types::PyDict};
 use std::{
+    collections::HashMap,
     env,
     sync::{
         atomic::Ordering::{Relaxed, SeqCst},
@@ -56,6 +51,7 @@ pub struct Server {
     shutdown_handler: Option<Arc<FunctionInfo>>,
     injected: DependencyInjection,
     middlewares: Middleware,
+    extra_headers: Arc<Mutex<HashMap<String, String>>>,
 }
 
 #[pymethods]
@@ -71,6 +67,7 @@ impl Server {
             shutdown_handler: None,
             injected: inject,
             middlewares,
+            extra_headers: Arc::new(HashMap::new().into()),
         }
     }
 
@@ -94,6 +91,11 @@ impl Server {
         self.middlewares.set_after_hooks(hooks);
     }
 
+    pub fn set_response_headers(&mut self, headers: HashMap<String, String>) {
+        let mut extra_headers = self.extra_headers.lock().unwrap();
+        *extra_headers = headers;
+    }
+
     pub fn start(
         &mut self,
         py: Python,
@@ -103,15 +105,11 @@ impl Server {
     ) -> PyResult<()> {
         tracing_subscriber::registry()
             .with(
-                fmt::layer()
-                    .with_target(false)
-                    .with_level(true)
-                    .with_file(true)
-                    .with_line_number(true)
+                tracing_subscriber::EnvFilter::try_from_default_env()
+                    .unwrap_or_else(|_| "debug".into()),
             )
+            .with(fmt::layer().with_target(false).with_level(true))
             .init();
-
-        // pyo3_log::init();
 
         if STARTED
             .compare_exchange(false, true, SeqCst, Relaxed)
@@ -147,7 +145,7 @@ impl Server {
 
         let inject_copy = self.injected.clone();
         let copy_middlewares = self.middlewares.clone();
-
+        let extra_headers = self.extra_headers.clone().lock().unwrap().clone();
         thread::spawn(move || {
             let rt = tokio::runtime::Builder::new_multi_thread()
                 .worker_threads(workers)
@@ -174,12 +172,14 @@ impl Server {
                     let function = route_copy.function.clone();
 
                     let copy_middlewares_clone = copy_middlewares.clone();
+                    let extra_headers = extra_headers.clone();
                     let handler = move |req| {
                         mapping_method(
                             req,
                             function,
                             task_locals,
                             copy_middlewares_clone.clone(),
+                            extra_headers.clone(),
                         )
                     };
 
@@ -242,19 +242,29 @@ async fn execute_request(
     req: HttpRequest<Body>,
     function: FunctionInfo,
     middlewares: Middleware,
+    extra_headers: HashMap<String, String>,
 ) -> ServerResponse {
     let deps = req.extensions().get::<DependencyInjection>().cloned();
     let mut request = Request::from_request(req).await;
+
+    let mut response_builder = ServerResponse::builder();
+    let headers = extra_headers
+        .iter()
+        .map(|(key, value)| (key.as_str(), value.as_str()))
+        .collect::<Vec<_>>();
+    for (key, value) in headers {
+        response_builder = response_builder.header(key, value);
+    }
 
     for before_middleware in middlewares.get_before_hooks() {
         request = match execute_middleware_function(&request, &before_middleware).await {
             Ok(MiddlewareReturn::Request(r)) => r,
             Ok(MiddlewareReturn::Response(r)) => {
-                return r.to_axum_response();
+                return r.to_axum_response(extra_headers);
             }
             Err(e) => {
-                return ServerResponse::builder()
-                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                response_builder = response_builder.status(StatusCode::INTERNAL_SERVER_ERROR);
+                return response_builder
                     .body(Body::from(format!("Error: {}", e)))
                     .unwrap();
             }
@@ -268,7 +278,7 @@ async fn execute_request(
     for after_middleware in middlewares.get_after_hooks() {
         response = match execute_middleware_function(&response, &after_middleware).await {
             Ok(MiddlewareReturn::Request(_)) => {
-                return ServerResponse::builder()
+                return response_builder
                     .status(StatusCode::INTERNAL_SERVER_ERROR)
                     .body(Body::from("Middleware returned a response"))
                     .unwrap();
@@ -278,7 +288,7 @@ async fn execute_request(
                 response
             }
             Err(e) => {
-                return ServerResponse::builder()
+                return response_builder
                     .status(StatusCode::INTERNAL_SERVER_ERROR)
                     .body(Body::from(e.to_string()))
                     .unwrap();
@@ -286,7 +296,7 @@ async fn execute_request(
         };
     }
 
-    response.to_axum_response()
+    response.to_axum_response(extra_headers)
 }
 
 async fn mapping_method(
@@ -294,10 +304,11 @@ async fn mapping_method(
     function: FunctionInfo,
     task_locals: pyo3_asyncio::TaskLocals,
     middlewares: Middleware,
+    extra_headers: HashMap<String, String>,
 ) -> impl IntoResponse {
     pyo3_asyncio::tokio::scope(
         task_locals,
-        execute_request(req, function, middlewares),
+        execute_request(req, function, middlewares, extra_headers),
     )
     .await
 }

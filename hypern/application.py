@@ -192,12 +192,13 @@ class Hypern:
         self.injectables = default_injectables or {}
         self.middleware_before_request = []
         self.middleware_after_request = []
+        self.response_headers = {}
 
         for route in routes:
             self.router.extend_route(route(app=self).routes)
 
         if openapi_url and docs_url:
-            self.add_openapi(
+            self.__add_openapi(
                 info=Info(
                     title=title,
                     summary=summary,
@@ -210,12 +211,27 @@ class Hypern:
                 docs_url=docs_url,
             )
 
-    def add_openapi(
+    def __add_openapi(
         self,
         info: Info,
         openapi_url: str,
         docs_url: str,
     ):
+        """
+        Adds OpenAPI schema and documentation routes to the application.
+
+        Args:
+            info (Info): An instance of the Info class containing metadata about the API.
+            openapi_url (str): The URL path where the OpenAPI schema will be served.
+            docs_url (str): The URL path where the Swagger UI documentation will be served.
+
+        The method defines two internal functions:
+            - schema: Generates and returns the OpenAPI schema as a JSON response.
+            - template_render: Renders and returns the Swagger UI documentation as an HTML response.
+
+        The method then adds routes to the application for serving the OpenAPI schema and the Swagger UI documentation.
+        """
+
         def schema(*args, **kwargs):
             schemas = SchemaGenerator(
                 {
@@ -237,7 +253,28 @@ class Hypern:
         self.add_route(HTTPMethod.GET, openapi_url, schema)
         self.add_route(HTTPMethod.GET, docs_url, template_render)
 
+    def add_response_header(self, key: str, value: str):
+        """
+        Adds a response header to the response headers dictionary.
+
+        Args:
+            key (str): The header field name.
+            value (str): The header field value.
+        """
+        self.response_headers[key] = value
+
     def before_request(self):
+        """
+        A decorator to register a function to be executed before each request.
+
+        This decorator can be used to add middleware functions that will be
+        executed before the main request handler. The function can be either
+        synchronous or asynchronous.
+
+        Returns:
+            function: The decorator function that registers the middleware.
+        """
+
         def decorator(func):
             is_async = asyncio.iscoroutinefunction(func)
             func_info = FunctionInfo(handler=func, is_async=is_async)
@@ -247,6 +284,17 @@ class Hypern:
         return decorator
 
     def after_request(self):
+        """
+        Decorator to register a function to be called after each request.
+
+        This decorator can be used to register both synchronous and asynchronous functions.
+        The registered function will be wrapped in a FunctionInfo object and appended to the
+        middleware_after_request list.
+
+        Returns:
+            function: The decorator function that registers the given function.
+        """
+
         def decorator(func):
             is_async = asyncio.iscoroutinefunction(func)
             func_info = FunctionInfo(handler=func, is_async=is_async)
@@ -256,10 +304,32 @@ class Hypern:
         return decorator
 
     def inject(self, key: str, value: Any):
+        """
+        Injects a key-value pair into the injectables dictionary.
+
+        Args:
+            key (str): The key to be added to the injectables dictionary.
+            value (Any): The value to be associated with the key.
+
+        Returns:
+            self: Returns the instance of the class to allow method chaining.
+        """
         self.injectables[key] = value
         return self
 
     def add_middleware(self, middleware: Middleware):
+        """
+        Adds middleware to the application.
+
+        This method attaches the middleware to the application instance and registers
+        its `before_request` and `after_request` hooks if they are defined.
+
+        Args:
+            middleware (Middleware): The middleware instance to be added.
+
+        Returns:
+            self: The application instance with the middleware added.
+        """
         setattr(middleware, "app", self)
         before_request = getattr(middleware, "before_request", None)
         after_request = getattr(middleware, "after_request", None)
@@ -286,6 +356,21 @@ class Hypern:
         max_blocking_threads: Annotated[int, Doc("The maximum number of blocking threads. Defaults to `100`")] = 1,
         check_port: Annotated[bool, Doc("Check if the port is already in use. Defaults to `True`")] = False,
     ):
+        """
+        Starts the server with the specified configuration.
+
+        Args:
+            host (str): The host to run the server on. Defaults to `127.0.0.1`.
+            port (int): The port to run the server on. Defaults to `8080`.
+            workers (int): The number of workers to run. Defaults to `1`.
+            processes (int): The number of processes to run. Defaults to `1`.
+            max_blocking_threads (int): The maximum number of blocking threads. Defaults to `100`.
+            check_port (bool): Check if the port is already in use. Defaults to `True`.
+
+        Raises:
+            ValueError: If an invalid port number is entered when prompted.
+
+        """
         if check_port:
             while self.is_port_in_use(port):
                 logger.error("Port %s is already in use. Please use a different port.", port)
@@ -308,9 +393,19 @@ class Hypern:
             injectables=self.injectables,
             before_request=self.middleware_before_request,
             after_request=self.middleware_after_request,
+            response_headers=self.response_headers,
         )
 
     def add_route(self, method: HTTPMethod, endpoint: str, handler: Callable[..., Any]):
+        """
+        Adds a route to the router.
+
+        Args:
+            method (HTTPMethod): The HTTP method for the route (e.g., GET, POST).
+            endpoint (str): The endpoint path for the route.
+            handler (Callable[..., Any]): The function that handles requests to the route.
+
+        """
         is_async = asyncio.iscoroutinefunction(handler)
         func_info = FunctionInfo(handler=handler, is_async=is_async)
         route = InternalRoute(path=endpoint, function=func_info, method=method.name)

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use axum::{
     body::Body,
     http::{HeaderMap, HeaderName, Response as ServerResponse, StatusCode},
@@ -52,11 +54,17 @@ impl Response {
         }
     }
 
-    pub fn to_axum_response(&self) -> axum::http::Response<axum::body::Body> {
+    pub fn to_axum_response(&self, extra_headers: HashMap<String, String>) -> axum::http::Response<axum::body::Body> {
         let mut headers = HeaderMap::new();
         for (key, value) in self.headers.headers.clone() {
             let header_name = HeaderName::from_bytes(key.as_bytes()).unwrap();
             headers.insert(header_name, value.join(" ").parse().unwrap());
+        }
+
+        // Add extra headers
+        for (key, value) in extra_headers.iter() {
+            let header_name = HeaderName::from_bytes(key.as_bytes()).unwrap();
+            headers.insert(header_name, value.parse().unwrap());
         }
 
         let mut response_builder =
