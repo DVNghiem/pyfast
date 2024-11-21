@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.sql.expression import Delete, Insert, Update
 
 from .repository import Model, PostgresRepository
+import asyncio
 
 
 class ContextStore:
@@ -136,7 +137,7 @@ class SqlConfig:
 
         session_scope: Union[AsyncSession, async_scoped_session] = async_scoped_session(
             session_factory=async_session_factory,
-            scopefunc=self.session_store.get_context,
+            scopefunc=asyncio.current_task,
         )
 
         @asynccontextmanager
