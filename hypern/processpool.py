@@ -12,6 +12,7 @@ def run_processes(
     port: int,
     workers: int,
     processes: int,
+    max_blocking_threads: int,
     router: Router,
     injectables: Dict[str, Any],
     before_request: List[FunctionInfo],
@@ -19,7 +20,7 @@ def run_processes(
 ) -> List[Process]:
     socket = SocketHeld(host, port)
 
-    process_pool = init_processpool(router, socket, workers, processes, injectables, before_request, after_request)
+    process_pool = init_processpool(router, socket, workers, processes, max_blocking_threads, injectables, before_request, after_request)
 
     def terminating_signal_handler(_sig, _frame):
         logger.info("Terminating server!!")
@@ -41,23 +42,21 @@ def init_processpool(
     socket: SocketHeld,
     workers: int,
     processes: int,
+    max_blocking_threads: int,
     injectables: Dict[str, Any],
     before_request: List[FunctionInfo],
     after_request: List[FunctionInfo],
 ) -> List[Process]:
     process_pool = []
-    if sys.platform.startswith("win32") or processes == 1:
-        spawn_process(router, socket, workers, 1, injectables, before_request, after_request)
-        return process_pool
 
-    # for _ in range(processes):
-    copied_socket = socket.try_clone()
-    process = Process(
-        target=spawn_process,
-        args=(router, copied_socket, workers, processes, injectables, before_request, after_request),
-    )
-    process.start()
-    process_pool.append(process)
+    for _ in range(processes):
+        copied_socket = socket.try_clone()
+        process = Process(
+            target=spawn_process,
+            args=(router, copied_socket, workers, max_blocking_threads, injectables, before_request, after_request),
+        )
+        process.start()
+        process_pool.append(process)
 
     return process_pool
 
@@ -80,7 +79,7 @@ def spawn_process(
     router: Router,
     socket: SocketHeld,
     workers: int,
-    processes: int,
+    max_blocking_threads: int,
     injectables: Dict[str, Any],
     before_request: List[FunctionInfo],
     after_request: List[FunctionInfo],
@@ -94,7 +93,7 @@ def spawn_process(
     server.set_after_hooks(hooks=after_request)
 
     try:
-        server.start(socket, workers, processes)
+        server.start(socket, workers, max_blocking_threads)
         loop = asyncio.get_event_loop()
         loop.run_forever()
     except KeyboardInterrupt:

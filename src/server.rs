@@ -99,15 +99,15 @@ impl Server {
         py: Python,
         socket: &PyCell<SocketHeld>,
         workers: usize,
-        processes: usize,
+        max_blocking_threads: usize,
     ) -> PyResult<()> {
         tracing_subscriber::registry()
             .with(
                 fmt::layer()
                     .with_target(false)
                     .with_level(true)
-                    .with_thread_names(true)
-                    .with_thread_ids(true),
+                    .with_file(true)
+                    .with_line_number(true)
             )
             .init();
 
@@ -151,15 +151,15 @@ impl Server {
         thread::spawn(move || {
             let rt = tokio::runtime::Builder::new_multi_thread()
                 .worker_threads(workers)
-                .max_blocking_threads(processes)
+                .max_blocking_threads(max_blocking_threads)
                 .thread_keep_alive(Duration::from_secs(60))
                 .thread_name("hypern-worker")
                 .enable_all()
                 .build()
                 .unwrap();
             debug!(
-                "Server start with {} workers and {} processes",
-                workers, processes
+                "Server start with {} workers and {} max blockingthreads",
+                workers, max_blocking_threads
             );
             debug!("Waiting for application to start...");
 

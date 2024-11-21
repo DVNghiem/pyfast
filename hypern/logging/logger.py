@@ -2,6 +2,7 @@
 import logging
 import sys
 from copy import copy
+from datetime import datetime, timezone
 from typing import Literal, Optional
 
 import click
@@ -46,14 +47,20 @@ class ColourizedFormatter(logging.Formatter):
         recordcopy = copy(record)
         levelname = recordcopy.levelname
         process = recordcopy.process
-        separator = " " * (8 - len(recordcopy.levelname))
+        created = recordcopy.created
+        filename = recordcopy.filename
+        module = recordcopy.module
+        lineno = recordcopy.lineno
+        separator = " " * (5 - len(recordcopy.levelname))
         if self.use_colors:
             levelname = self.color_level_name(levelname, recordcopy.levelno)
             if "color_message" in recordcopy.__dict__:
                 recordcopy.msg = recordcopy.__dict__["color_message"]
                 recordcopy.__dict__["message"] = recordcopy.getMessage()
-        recordcopy.__dict__["levelprefix"] = levelname + ":" + separator
+        recordcopy.__dict__["levelprefix"] = levelname + separator
         recordcopy.__dict__["process"] = click.style(str(process), fg="blue")
+        recordcopy.__dict__["asctime"] = click.style(datetime.fromtimestamp(created, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%fZ"), fg=(101, 111, 104))
+        recordcopy.__dict__["filename"] = click.style(f"{module}/{filename}:{lineno}:", fg=(101, 111, 104))
         return super().formatMessage(recordcopy)
 
 
@@ -65,28 +72,11 @@ class DefaultFormatter(ColourizedFormatter):
 def create_logger(name) -> logging.Logger:
     logger = logging.getLogger(name)
     logger.setLevel(logging.DEBUG)
-    formatter = DefaultFormatter(
-        fmt="%(levelprefix)s %(asctime)s [%(process)s] [%(filename)s:%(lineno)d] %(message)s",
-        use_colors=True,
-        datefmt="%d-%m-%Y %H:%M:%S",
-    )
+    formatter = DefaultFormatter(fmt="%(asctime)s %(levelprefix)s %(filename)s %(message)s", use_colors=True, datefmt="%Y-%m-%d %H:%M:%S")
     handler = logging.StreamHandler()
     handler.setFormatter(formatter)
     logger.addHandler(handler)
     return logger
-
-
-def get_loggers_by_prefix(prefix):
-    return [name for name in logging.root.manager.loggerDict.keys() if name.startswith(prefix)]
-
-
-def reset_logger() -> None:
-    robyn_loggers = get_loggers_by_prefix("robyn")
-    actix_loggers = ["actix_server.builder", "actix_server.worker", "actix_server.server", "actix_server.accept"]
-
-    for name in [*robyn_loggers, *actix_loggers]:
-        logger = create_logger(name)
-        logger.propagate = False
 
 
 logger = create_logger("hypern")

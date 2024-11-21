@@ -12,15 +12,13 @@ from hypern.datastructures import Contact, HTTPMethod, Info, License
 from hypern.exceptions import InvalidPortNumber
 from hypern.hypern import FunctionInfo, Router
 from hypern.hypern import Route as InternalRoute
-from hypern.logging import logger, reset_logger
+from hypern.logging import logger
 from hypern.openapi import SchemaGenerator, SwaggerUI
 from hypern.processpool import run_processes
 from hypern.response import HTMLResponse, JSONResponse
 from hypern.routing import Route
 from hypern.scheduler import Scheduler
 from hypern.middleware import Middleware
-
-reset_logger()
 
 AppType = TypeVar("AppType", bound="Hypern")
 
@@ -279,7 +277,15 @@ class Hypern:
         except Exception:
             raise InvalidPortNumber(f"Invalid port number: {port}")
 
-    def start(self, host: str = "127.0.0.1", port: int = 8080, workers=1, processes=1, check_port=False):
+    def start(
+        self,
+        host: Annotated[str, Doc("The host to run the server on. Defaults to `127.0.0.1`")] = "127.0.0.1",
+        port: Annotated[int, Doc("The port to run the server on. Defaults to `8080`")] = 8080,
+        workers: Annotated[int, Doc("The number of workers to run. Defaults to `1`")] = 1,
+        processes: Annotated[int, Doc("The number of processes to run. Defaults to `1`")] = 1,
+        max_blocking_threads: Annotated[int, Doc("The maximum number of blocking threads. Defaults to `100`")] = 1,
+        check_port: Annotated[bool, Doc("Check if the port is already in use. Defaults to `True`")] = False,
+    ):
         if check_port:
             while self.is_port_in_use(port):
                 logger.error("Port %s is already in use. Please use a different port.", port)
@@ -297,6 +303,7 @@ class Hypern:
             port=port,
             workers=workers,
             processes=processes,
+            max_blocking_threads=max_blocking_threads,
             router=self.router,
             injectables=self.injectables,
             before_request=self.middleware_before_request,
