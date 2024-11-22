@@ -88,6 +88,7 @@ class TestFileResponse(HTTPEndpoint):
 
 
 functional_route = Route("/functional")
+sync_route = Route("/sync")
 
 
 @functional_route.get("/default")
