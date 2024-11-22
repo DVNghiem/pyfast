@@ -1,12 +1,15 @@
 import asyncio
+import os
 import signal
 import sys
 from typing import Any, Dict, List
 
 from multiprocess import Process
+from watchdog.observers import Observer
 
 from .hypern import FunctionInfo, Router, Server, SocketHeld
 from .logging import logger
+from .reload import EventHandler
 
 
 def run_processes(
@@ -20,6 +23,7 @@ def run_processes(
     before_request: List[FunctionInfo],
     after_request: List[FunctionInfo],
     response_headers: Dict[str, str],
+    reload: bool = True,
 ) -> List[Process]:
     socket = SocketHeld(host, port)
 
@@ -33,9 +37,30 @@ def run_processes(
     signal.signal(signal.SIGINT, terminating_signal_handler)
     signal.signal(signal.SIGTERM, terminating_signal_handler)
 
-    logger.info("Press Ctrl + C to stop \n")
-    for process in process_pool:
-        process.join()
+    if reload:
+        # Set up file system watcher for auto-reload
+        watch_dirs = [os.getcwd()]
+        observer = Observer()
+        reload_handler = EventHandler(file_path=sys.argv[0], directory_path=os.getcwd())
+
+        for directory in watch_dirs:
+            observer.schedule(reload_handler, directory, recursive=True)
+
+        observer.start()
+
+    logger.info(f"Server started at http://{host}:{port}")
+    logger.info("Press Ctrl + C to stop")
+
+    try:
+        for process in process_pool:
+            logger.debug(f"Process {process.pid} started")
+            process.join()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        if reload:
+            observer.stop()
+            observer.join()
 
     return process_pool
 

@@ -33,6 +33,7 @@ dependencies=[
     "multiprocess==0.70.17",
     "uvloop==0.21.0; sys_platform != 'win32' and platform_python_implementation == 'CPython' and platform_machine != 'armv7l'",
     "cryptography==43.0.3",
+    "watchdog==6.0.0",
 ]
 [tool.maturin]
 features = ["pyo3/extension-module"]
@@ -65,6 +66,7 @@ orjson = "^3.10.11"
 multiprocess = "^0.70.17"
 uvloop = { version = "^0.21.0", markers = "sys_platform != 'win32' and (sys_platform != 'cygwin' and platform_python_implementation != 'PyPy')" }
 cryptography = "^43.0.3"
+watchdog = "^6.0.0"
 
 [tool.poetry.group.test.dependencies]
 pytest = "7.2.1"

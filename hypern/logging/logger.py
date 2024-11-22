@@ -59,7 +59,7 @@ class ColourizedFormatter(logging.Formatter):
                 recordcopy.__dict__["message"] = recordcopy.getMessage()
         recordcopy.__dict__["levelprefix"] = levelname + separator
         recordcopy.__dict__["process"] = click.style(str(process), fg="blue")
-        recordcopy.__dict__["asctime"] = click.style(datetime.fromtimestamp(created, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%fZ"), fg=(101, 111, 104))
+        recordcopy.__dict__["asctime"] = click.style(datetime.fromtimestamp(created, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ"), fg=(101, 111, 104))
         recordcopy.__dict__["filename"] = click.style(f"{module}/{filename}:{lineno}:", fg=(101, 111, 104))
         return super().formatMessage(recordcopy)
 
