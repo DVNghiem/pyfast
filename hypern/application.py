@@ -1,22 +1,29 @@
 # -*- coding: utf-8 -*-
-from typing import Any, List, TypeVar
-from typing_extensions import Annotated, Doc
-from robyn import Robyn
+from __future__ import annotations
+
+import asyncio
+import socket
+from typing import Any, Callable, List, TypeVar
+
 import orjson
+from typing_extensions import Annotated, Doc
 
-from hypern.openapi import SwaggerUI, SchemaGenerator
+from hypern.datastructures import Contact, HTTPMethod, Info, License
+from hypern.exceptions import InvalidPortNumber
+from hypern.hypern import FunctionInfo, Router
+from hypern.hypern import Route as InternalRoute
+from hypern.logging import logger
+from hypern.openapi import SchemaGenerator, SwaggerUI
+from hypern.processpool import run_processes
+from hypern.response import HTMLResponse, JSONResponse
 from hypern.routing import Route
-from hypern.response import JSONResponse
-from hypern.logging import reset_logger
-from hypern.datastructures import Contact, License, Info
 from hypern.scheduler import Scheduler
-
-reset_logger()
+from hypern.middleware import Middleware
 
 AppType = TypeVar("AppType", bound="Hypern")
 
 
-class Hypern(Robyn):
+class Hypern:
     def __init__(
         self: AppType,
         routes: Annotated[
@@ -53,7 +60,7 @@ class Hypern(Robyn):
                 Read more in the
                 """
             ),
-        ] = "HyperN",
+        ] = "Hypern",
         summary: Annotated[
             str | None,
             Doc(
@@ -150,7 +157,7 @@ class Hypern(Robyn):
                 **Example**
 
                 ```python
-                app = HyperN(
+                app = Hypern(
                     license_info={
                         "name": "Apache 2.0",
                         "url": "https://www.apache.org/licenses/LICENSE-2.0.html",
@@ -168,17 +175,30 @@ class Hypern(Robyn):
                 """
             ),
         ] = None,
+        default_injectables: Annotated[
+            dict[str, Any] | None,
+            Doc(
+                """
+                A dictionary of default injectables to be passed to all routes.
+                """
+            ),
+        ] = None,
         *args: Any,
         **kwargs: Any,
     ) -> None:
-        super().__init__(__file__, *args, **kwargs)
+        super().__init__(*args, **kwargs)
+        self.router = Router(path="/")
         self.scheduler = scheduler
+        self.injectables = default_injectables or {}
+        self.middleware_before_request = []
+        self.middleware_after_request = []
+        self.response_headers = {}
 
         for route in routes:
-            self.router.routes.extend(route(self).get_routes())
+            self.router.extend_route(route(app=self).routes)
 
         if openapi_url and docs_url:
-            self.add_openapi(
+            self.__add_openapi(
                 info=Info(
                     title=title,
                     summary=summary,
@@ -191,14 +211,28 @@ class Hypern(Robyn):
                 docs_url=docs_url,
             )
 
-    def add_openapi(
+    def __add_openapi(
         self,
         info: Info,
         openapi_url: str,
         docs_url: str,
     ):
-        @self.get(openapi_url)
-        def schema():
+        """
+        Adds OpenAPI schema and documentation routes to the application.
+
+        Args:
+            info (Info): An instance of the Info class containing metadata about the API.
+            openapi_url (str): The URL path where the OpenAPI schema will be served.
+            docs_url (str): The URL path where the Swagger UI documentation will be served.
+
+        The method defines two internal functions:
+            - schema: Generates and returns the OpenAPI schema as a JSON response.
+            - template_render: Renders and returns the Swagger UI documentation as an HTML response.
+
+        The method then adds routes to the application for serving the OpenAPI schema and the Swagger UI documentation.
+        """
+
+        def schema(*args, **kwargs):
             schemas = SchemaGenerator(
                 {
                     "openapi": "3.0.0",
@@ -208,27 +242,171 @@ class Hypern(Robyn):
             )
             return JSONResponse(content=orjson.dumps(schemas.get_schema(self)))
 
-        @self.get(docs_url)
-        def template_render():
+        def template_render(*args, **kwargs):
             swagger = SwaggerUI(
                 title="Swagger",
                 openapi_url=openapi_url,
             )
-            template = swagger.render_template()
-            return template
+            template = swagger.get_html_content()
+            return HTMLResponse(template)
 
-    def add_middleware(self, middleware):
+        self.add_route(HTTPMethod.GET, openapi_url, schema)
+        self.add_route(HTTPMethod.GET, docs_url, template_render)
+
+    def add_response_header(self, key: str, value: str):
+        """
+        Adds a response header to the response headers dictionary.
+
+        Args:
+            key (str): The header field name.
+            value (str): The header field value.
+        """
+        self.response_headers[key] = value
+
+    def before_request(self):
+        """
+        A decorator to register a function to be executed before each request.
+
+        This decorator can be used to add middleware functions that will be
+        executed before the main request handler. The function can be either
+        synchronous or asynchronous.
+
+        Returns:
+            function: The decorator function that registers the middleware.
+        """
+
+        def decorator(func):
+            is_async = asyncio.iscoroutinefunction(func)
+            func_info = FunctionInfo(handler=func, is_async=is_async)
+            self.middleware_before_request.append(func_info)
+            return func
+
+        return decorator
+
+    def after_request(self):
+        """
+        Decorator to register a function to be called after each request.
+
+        This decorator can be used to register both synchronous and asynchronous functions.
+        The registered function will be wrapped in a FunctionInfo object and appended to the
+        middleware_after_request list.
+
+        Returns:
+            function: The decorator function that registers the given function.
+        """
+
+        def decorator(func):
+            is_async = asyncio.iscoroutinefunction(func)
+            func_info = FunctionInfo(handler=func, is_async=is_async)
+            self.middleware_after_request.append(func_info)
+            return func
+
+        return decorator
+
+    def inject(self, key: str, value: Any):
+        """
+        Injects a key-value pair into the injectables dictionary.
+
+        Args:
+            key (str): The key to be added to the injectables dictionary.
+            value (Any): The value to be associated with the key.
+
+        Returns:
+            self: Returns the instance of the class to allow method chaining.
+        """
+        self.injectables[key] = value
+        return self
+
+    def add_middleware(self, middleware: Middleware):
+        """
+        Adds middleware to the application.
+
+        This method attaches the middleware to the application instance and registers
+        its `before_request` and `after_request` hooks if they are defined.
+
+        Args:
+            middleware (Middleware): The middleware instance to be added.
+
+        Returns:
+            self: The application instance with the middleware added.
+        """
         setattr(middleware, "app", self)
         before_request = getattr(middleware, "before_request", None)
         after_request = getattr(middleware, "after_request", None)
-        endpoint = getattr(middleware, "endpoint", None)
+
         if before_request:
-            self.before_request(endpoint=endpoint)(before_request)
+            self.before_request()(before_request)
         if after_request:
-            self.after_request(endpoint=endpoint)(after_request)
+            self.after_request()(after_request)
         return self
 
-    def start(self, host: str = "127.0.0.1", port: int = 8080, _check_port: bool = True):
+    def is_port_in_use(self, port: int) -> bool:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                return s.connect_ex(("localhost", port)) == 0
+        except Exception:
+            raise InvalidPortNumber(f"Invalid port number: {port}")
+
+    def start(
+        self,
+        host: Annotated[str, Doc("The host to run the server on. Defaults to `127.0.0.1`")] = "127.0.0.1",
+        port: Annotated[int, Doc("The port to run the server on. Defaults to `8080`")] = 8080,
+        workers: Annotated[int, Doc("The number of workers to run. Defaults to `1`")] = 1,
+        processes: Annotated[int, Doc("The number of processes to run. Defaults to `1`")] = 1,
+        max_blocking_threads: Annotated[int, Doc("The maximum number of blocking threads. Defaults to `100`")] = 1,
+        check_port: Annotated[bool, Doc("Check if the port is already in use. Defaults to `True`")] = False,
+    ):
+        """
+        Starts the server with the specified configuration.
+
+        Args:
+            host (str): The host to run the server on. Defaults to `127.0.0.1`.
+            port (int): The port to run the server on. Defaults to `8080`.
+            workers (int): The number of workers to run. Defaults to `1`.
+            processes (int): The number of processes to run. Defaults to `1`.
+            max_blocking_threads (int): The maximum number of blocking threads. Defaults to `100`.
+            check_port (bool): Check if the port is already in use. Defaults to `True`.
+
+        Raises:
+            ValueError: If an invalid port number is entered when prompted.
+
+        """
+        if check_port:
+            while self.is_port_in_use(port):
+                logger.error("Port %s is already in use. Please use a different port.", port)
+                try:
+                    port = int(input("Enter a different port: "))
+                except Exception:
+                    logger.error("Invalid port number. Please enter a valid port number.")
+                    continue
+
         if self.scheduler:
             self.scheduler.start()
-        return super().start(host, port, _check_port)
+
+        run_processes(
+            host=host,
+            port=port,
+            workers=workers,
+            processes=processes,
+            max_blocking_threads=max_blocking_threads,
+            router=self.router,
+            injectables=self.injectables,
+            before_request=self.middleware_before_request,
+            after_request=self.middleware_after_request,
+            response_headers=self.response_headers,
+        )
+
+    def add_route(self, method: HTTPMethod, endpoint: str, handler: Callable[..., Any]):
+        """
+        Adds a route to the router.
+
+        Args:
+            method (HTTPMethod): The HTTP method for the route (e.g., GET, POST).
+            endpoint (str): The endpoint path for the route.
+            handler (Callable[..., Any]): The function that handles requests to the route.
+
+        """
+        is_async = asyncio.iscoroutinefunction(handler)
+        func_info = FunctionInfo(handler=handler, is_async=is_async)
+        route = InternalRoute(path=endpoint, function=func_info, method=method.name)
+        self.router.add_route(route=route)

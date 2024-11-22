@@ -1,15 +1,18 @@
 # -*- coding: utf-8 -*-
-from typing import Callable, Any, Dict, List, Union, Type, get_origin, get_args
-from robyn.router import Router as RobynRouter
-from robyn import HttpMethod, Request
+import asyncio
+import inspect
+from enum import Enum
+from typing import Any, Callable, Dict, List, Type, Union, get_args, get_origin
+
+import yaml  # type: ignore
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
-from enum import Enum
-
-import inspect
-import yaml  # type: ignore
 
 from hypern.auth.authorization import Authorization
+from hypern.datastructures import HTTPMethod
+from hypern.hypern import FunctionInfo, Request, Router
+from hypern.hypern import Route as InternalRoute
+
 from .dispatcher import dispatch
 
 
@@ -52,7 +55,7 @@ class SchemaProcessor:
     @staticmethod
     def process_enum(annotation: Type[Enum]) -> Dict[str, Any]:
         """Process Enum types"""
-        return {"type": "string", "enum": [e.value for e in annotation]}
+        return {"type": "string", "enum": [e.value for e in annotation.__members__.values()]}
 
     @staticmethod
     def process_primitive(annotation: type) -> Dict[str, str]:
@@ -151,49 +154,54 @@ class Route:
         self.name = name
 
         self.http_methods = {
-            "GET": HttpMethod.GET,
-            "POST": HttpMethod.POST,
-            "PUT": HttpMethod.PUT,
-            "DELETE": HttpMethod.DELETE,
-            "PATCH": HttpMethod.PATCH,
-            "HEAD": HttpMethod.HEAD,
-            "OPTIONS": HttpMethod.OPTIONS,
+            "GET": HTTPMethod.GET,
+            "POST": HTTPMethod.POST,
+            "PUT": HTTPMethod.PUT,
+            "DELETE": HTTPMethod.DELETE,
+            "PATCH": HTTPMethod.PATCH,
+            "HEAD": HTTPMethod.HEAD,
+            "OPTIONS": HTTPMethod.OPTIONS,
         }
         self.functional_handlers = []
+
+    def _process_authorization(self, item: type, docs: Dict) -> None:
+        if isinstance(item, type) and issubclass(item, Authorization):
+            auth_obj = item()
+            docs["security"] = [{auth_obj.name: []}]
+
+    def _process_model_params(self, key: str, item: type, docs: Dict) -> None:
+        if not (isinstance(item, type) and issubclass(item, BaseModel)):
+            return
+
+        if key == "form_data":
+            docs["requestBody"] = {"content": {"application/json": {"schema": pydantic_to_swagger(item).get(item.__name__)}}}
+        elif key == "query_params":
+            docs["parameters"] = [{"name": param, "in": "query", "schema": _process_field(param, field)} for param, field in item.model_fields.items()]
+        elif key == "path_params":
+            path_params = [
+                {"name": param, "in": "path", "required": True, "schema": _process_field(param, field)} for param, field in item.model_fields.items()
+            ]
+            docs.setdefault("parameters", []).extend(path_params)
+
+    def _process_response(self, response_type: type, docs: Dict) -> None:
+        if isinstance(response_type, type) and issubclass(response_type, BaseModel):
+            docs["responses"] = {
+                "200": {
+                    "description": "Successful response",
+                    "content": {"application/json": {"schema": response_type.model_json_schema()}},
+                }
+            }
 
     def swagger_generate(self, signature: inspect.Signature, summary: str = "Document API") -> str:
         _inputs = signature.parameters.values()
         _inputs_dict = {_input.name: _input.annotation for _input in _inputs}
         _docs: Dict = {"summary": summary, "tags": self.tags, "responses": [], "name": self.name}
-        _response_type = signature.return_annotation
 
         for key, item in _inputs_dict.items():
-            if isinstance(item, type) and issubclass(item, Authorization):
-                auth_obj = item()
-                _docs["security"] = [{auth_obj.name: []}]
+            self._process_authorization(item, _docs)
+            self._process_model_params(key, item, _docs)
 
-            if isinstance(item, type) and issubclass(item, BaseModel):
-                if key == "form_data":
-                    _docs["requestBody"] = {"content": {"application/json": {"schema": pydantic_to_swagger(item).get(item.__name__)}}}
-
-                if key == "query_params":
-                    _docs["parameters"] = [{"name": param, "in": "query", "schema": _process_field(param, field)} for param, field in item.model_fields.items()]
-
-                if key == "path_params":
-                    path_params = [
-                        {"name": param, "in": "path", "required": True, "schema": _process_field(param, field)} for param, field in item.model_fields.items()
-                    ]
-                    _docs.setdefault("parameters", []).extend(path_params)
-
-        if isinstance(_response_type, type) and issubclass(_response_type, BaseModel):
-            _docs["responses"] = {
-                "200": {
-                    "description": "Successful response",
-                    # type: ignore
-                    "content": {"application/json": {"schema": _response_type.model_json_schema()}},
-                }
-            }
-
+        self._process_response(signature.return_annotation, _docs)
         return yaml.dump(_docs)
 
     def _combine_path(self, path1: str, path2: str) -> str:
@@ -203,21 +211,21 @@ class Route:
             return path1 + "/" + path2
         return path1 + path2
 
+    def make_internal_route(self, path, handler, method) -> InternalRoute:
+        is_async = asyncio.iscoroutinefunction(handler)
+        func_info = FunctionInfo(handler=handler, is_async=is_async)
+        return InternalRoute(path=path, function=func_info, method=method)
+
     def __call__(self, app, *args: Any, **kwds: Any) -> Any:
-        router = RobynRouter()
+        router = Router(self.path)
 
         # Validate handlers
         if not self.endpoint and not self.functional_handlers:
             raise ValueError(f"No handler found for route: {self.path}")
 
-        default_params = {"is_const": False, "injected_dependencies": app.dependencies.get_dependency_map(app), "exception_handler": app.exception_handler}
-
         # Handle functional routes
         for h in self.functional_handlers:
-            router.add_route(
-                route_type=self.http_methods[h["method"].upper()], endpoint=self._combine_path(self.path, h["path"]), handler=h["func"], **default_params
-            )
-
+            router.add_route(route=self.make_internal_route(path=h["path"], handler=h["func"], method=h["method"].upper()))
         if not self.endpoint:
             return router
 
@@ -228,21 +236,18 @@ class Route:
                 doc = self.swagger_generate(sig, func.__doc__)
                 self.endpoint.dispatch.__doc__ = doc
                 endpoint_obj = self.endpoint()
-                router.add_route(route_type=self.http_methods[name.upper()], endpoint=self.path, handler=endpoint_obj.dispatch, **default_params)
+                router.add_route(route=self.make_internal_route(path="/", handler=endpoint_obj.dispatch, method=name.upper()))
                 del endpoint_obj  # free up memory
-
         return router
 
-    def route(
+    def add_route(
         self,
         path: str,
         method: str,
-        *args: Any,
-        **kwds: Any,
     ) -> Callable:
         def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-            async def functional_wrapper(request: Request, global_dependencies, router_dependencies) -> Any:
-                return await dispatch(func, request, global_dependencies, router_dependencies)
+            async def functional_wrapper(request: Request, inject: Dict[str, Any]) -> Any:
+                return await dispatch(func, request, inject)
 
             sig = inspect.signature(func)
             functional_wrapper.__doc__ = self.swagger_generate(sig, func.__doc__)
@@ -258,22 +263,22 @@ class Route:
         return decorator
 
     def get(self, path: str) -> Callable:
-        return self.route(path, "GET")
+        return self.add_route(path, "GET")
 
     def post(self, path: str) -> Callable:
-        return self.route(path, "POST")
+        return self.add_route(path, "POST")
 
     def put(self, path: str) -> Callable:
-        return self.route(path, "PUT")
+        return self.add_route(path, "PUT")
 
     def delete(self, path: str) -> Callable:
-        return self.route(path, "DELETE")
+        return self.add_route(path, "DELETE")
 
     def patch(self, path: str) -> Callable:
-        return self.route(path, "PATCH")
+        return self.add_route(path, "PATCH")
 
     def head(self, path: str) -> Callable:
-        return self.route(path, "HEAD")
+        return self.add_route(path, "HEAD")
 
     def options(self, path: str) -> Callable:
-        return self.route(path, "OPTIONS")
+        return self.add_route(path, "OPTIONS")

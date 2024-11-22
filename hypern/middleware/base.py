@@ -1,7 +1,9 @@
 from abc import ABC, abstractmethod
-from robyn import Response, Request
+from hypern.hypern import Response, Request
 
 
+# The `Middleware` class is an abstract base class with abstract methods `before_request` and
+# `after_request` for handling requests and responses in a web application.
 class Middleware(ABC):
     def __init__(self) -> None:
         super().__init__()

@@ -1,14 +1,17 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-from pydantic import BaseModel, ValidationError
-from robyn import Request
-from hypern.exceptions import BadRequest, ValidationError as HypernValidationError
-from hypern.auth.authorization import Authorization
-from pydash import get
-import typing
 import inspect
+import typing
+
 import orjson
+from pydantic import BaseModel, ValidationError
+from pydash import get
+
+from hypern.auth.authorization import Authorization
+from hypern.exceptions import BadRequest
+from hypern.exceptions import ValidationError as HypernValidationError
+from hypern.hypern import Request
 
 
 class ParamParser:
@@ -36,15 +39,12 @@ class ParamParser:
         return lambda: dict(self.request.path_params.items())
 
     def _parse_form_data(self) -> dict:
-        form_data = {k: v for k, v in self.request.form_data.items()}
-        return form_data if form_data else self.request.json()
+        return self.request.json()
 
 
 class InputHandler:
-    def __init__(self, request, global_dependencies, router_dependencies):
+    def __init__(self, request):
         self.request = request
-        self.global_dependencies = global_dependencies
-        self.router_dependencies = router_dependencies
         self.param_parser = ParamParser(request)
 
     async def parse_pydantic_model(self, param_name: str, model_class: typing.Type[BaseModel]) -> BaseModel:
@@ -68,12 +68,10 @@ class InputHandler:
     async def handle_special_params(self, param_name: str) -> typing.Any:
         special_params = {
             "request": lambda: self.request,
-            "global_dependencies": lambda: self.global_dependencies,
-            "router_dependencies": lambda: self.router_dependencies,
         }
         return special_params.get(param_name, lambda: None)()
 
-    async def get_input_handler(self, signature: inspect.Signature) -> typing.Dict[str, typing.Any]:
+    async def get_input_handler(self, signature: inspect.Signature, inject: typing.Dict[str, typing.Any]) -> typing.Dict[str, typing.Any]:
         """
         Parse the request data and return the kwargs for the handler
         """
@@ -97,5 +95,6 @@ class InputHandler:
             special_value = await self.handle_special_params(name)
             if special_value is not None:
                 kwargs[name] = special_value
-
+            if name in inject:
+                kwargs[name] = inject[name]
         return kwargs

@@ -5,7 +5,7 @@ build-backend = "maturin"
 
 [project]
 name = "hypern"
-version = "0.1.1"
+version = "0.2.0"
 description = "A Fast Async Python backend with a Rust runtime."
 authors = [{ name = "Martin Dang", email = "vannghiem848@gmail.com" }]
 requires-python = ">=3.10"
@@ -15,7 +15,6 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dependencies=[
-    "robyn==0.58.0",
     "sqlalchemy[asyncio] == 2.0.31",
     "pydantic[email]==2.8.2",
     "passlib==1.7.4",
@@ -29,7 +28,10 @@ dependencies=[
     "pyyaml == 6.0.2",
     "mongoengine==0.29.1",
     "argon2-cffi==23.1.0",
-    "bcrypt==4.2.0"
+    "bcrypt==4.2.0",
+    "orjson==3.10.11",
+    "multiprocess==0.70.17",
+    "uvloop==0.21.0; sys_platform != 'win32' and platform_python_implementation == 'CPython' and platform_machine != 'armv7l'",
 ]
 [tool.maturin]
 features = ["pyo3/extension-module"]
@@ -37,13 +39,12 @@ module-name = "hypern"
 
 [tool.poetry]
 name = "hypern"
-version = "0.1.1"
+version = "0.2.0"
 description = "A Fast Async Python backend with a Rust runtime."
 authors = ["Martin Dang <vannghiem848@gmail.com>"]
 
 [tool.poetry.dependencies]
 python = "^3.9"
-robyn = "^0.58.0"
 sqlalchemy = {extras = ["asyncio"], version = "^2.0.31"}
 pydantic = {extras = ["email"], version = "^2.9.2"}
 passlib = "^1.7.4"
@@ -59,6 +60,9 @@ pyyaml = "^6.0.2"
 mongoengine = "^0.29.1"
 argon2-cffi = "^23.1.0"
 bcrypt = "^4.2.0"
+orjson = "^3.10.11"
+multiprocess = "^0.70.17"
+uvloop = { version = "^0.21.0", markers = "sys_platform != 'win32' and (sys_platform != 'cygwin' and platform_python_implementation != 'PyPy')" }
 
 [tool.poetry.group.test.dependencies]
 pytest = "7.2.1"

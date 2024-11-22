@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 
+import weakref
+
+import passlib
+from passlib.context import LazyCryptContext
 from sqlalchemy import types
 from sqlalchemy.dialects import oracle, postgresql, sqlite
 from sqlalchemy.ext.mutable import Mutable
-from passlib.context import LazyCryptContext
-import weakref
-import passlib
 
 
 class Password(Mutable):
