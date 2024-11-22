@@ -351,8 +351,6 @@ class Hypern:
         if self.scheduler:
             self.scheduler.start()
 
-        print(self.args.reload)
-
         run_processes(
             host=self.args.host,
             port=self.args.port,

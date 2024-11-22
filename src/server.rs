@@ -159,7 +159,7 @@ impl Server {
                 "Server start with {} workers and {} max blockingthreads",
                 workers, max_blocking_threads
             );
-            debug!("Waiting for application to start...");
+            debug!("Waiting for process to start...");
 
             rt.block_on(async move {
                 let task_locals = task_locals_copy.clone();

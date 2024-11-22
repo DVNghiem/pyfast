@@ -1,7 +1,5 @@
-import signal
 import sys
 import time
-import os
 import subprocess
 from watchdog.events import FileSystemEventHandler
 
@@ -17,7 +15,22 @@ class EventHandler(FileSystemEventHandler):
 
     def stop_server(self):
         if self.process:
-            os.kill(self.process.pid, signal.SIGTERM)  # Stop the subprocess using os.kill()
+            try:
+                # Check if the process is still alive
+                if self.process.poll() is None:  # None means the process is still running
+                    self.process.terminate()  # Gracefully terminate the process
+                    self.process.wait(timeout=5)  # Wait for the process to exit
+                else:
+                    logger.error("Process is not running.")
+            except subprocess.TimeoutExpired:
+                logger.error("Process did not terminate in time. Forcing termination.")
+                self.process.kill()  # Forcefully kill the process if it doesn't stop
+            except ProcessLookupError:
+                logger.error("Process does not exist.")
+            except Exception as e:
+                logger.error(f"An error occurred while stopping the server: {e}")
+        else:
+            logger.debug("No process to stop.")
 
     def reload(self):
         self.stop_server()
