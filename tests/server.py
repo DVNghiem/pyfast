@@ -145,4 +145,4 @@ def global_after_request(response: Response):
 
 
 if __name__ == "__main__":
-    app.start(port=5005)
+    app.start()
