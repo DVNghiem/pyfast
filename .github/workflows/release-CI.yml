@@ -2,10 +2,8 @@
 name: Release CI
 on:
   push:
-    # tags:
-    #   - v*
-    branches:
-    - stag
+    tags:
+      - v*
 jobs:
   macos:
     runs-on: macos-12
