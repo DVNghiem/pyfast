@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 from functools import reduce
-from typing import Any, Generic, Optional, Type, TypeVar, Dict
-from sqlalchemy import Select, select, and_, desc, asc, between
+from typing import Any, Dict, Generic, Optional, Type, TypeVar
+
+from sqlalchemy import Select, and_, asc, between, desc, select
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
 )
-from sqlalchemy.sql import func
 from sqlalchemy.orm import declarative_base
+from sqlalchemy.sql import func
 
 Base = declarative_base()
 

@@ -1,5 +1,4 @@
 use pyo3::prelude::*;
-use pyo3::types::*;
 
 #[pyclass]
 pub struct SwaggerUI {
@@ -20,19 +19,7 @@ impl SwaggerUI {
         }
     }
 
-    fn render_template(&self) -> PyObject {
-        Python::with_gil(|py| {
-            let robyn_module = py.import("robyn").unwrap();
-            let response = robyn_module.getattr("Response").unwrap();
-            let status_code = 200;
-            let description = self.get_html_contant();
-            let headers = PyDict::new(py);
-            headers.set_item("Content-type", "text/html").unwrap();
-            response.call1((status_code, headers, description)).unwrap().to_object(py)
-        })
-    }
-
-    fn get_html_contant(&self) -> String{
+    pub fn get_html_content(&self) -> String{
         let oauth2_redirect_url = false;// TODO
 
         let mut html = format!(

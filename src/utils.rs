@@ -1,3 +1,4 @@
+use pyo3::{types::{PyBytes, PyString}, PyAny, PyResult};
 use yaml_rust::Yaml;
 use serde_json::Value;
 use tokio::runtime::Runtime;
@@ -28,5 +29,15 @@ pub fn yaml_to_json(yaml: &Yaml) -> Value {
         Yaml::Null => Value::Null,
         Yaml::BadValue => Value::Null,
         _ => Value::Null,
+    }
+}
+
+pub fn get_description_from_pyobject(description: &PyAny) -> PyResult<Vec<u8>> {
+    if let Ok(s) = description.downcast::<PyString>() {
+        Ok(s.to_string().into_bytes())
+    } else if let Ok(b) = description.downcast::<PyBytes>() {
+        Ok(b.as_bytes().to_vec())
+    } else {
+        Ok(vec![])
     }
 }

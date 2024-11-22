@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import typing
 from urllib.parse import quote
-from robyn import Response as RobynResponse, Headers
+from hypern.hypern import Response as InternalResponse, Header
 import orjson
 
 from hypern.background import BackgroundTask, BackgroundTasks
@@ -74,8 +74,8 @@ def to_response(cls):
                 task_manager.execute_all()
                 del task_manager
 
-            headers = Headers(instance.raw_headers)
-            return RobynResponse(
+            headers = Header(instance.raw_headers)
+            return InternalResponse(
                 status_code=instance.status_code,
                 headers=headers,
                 description=instance.body,

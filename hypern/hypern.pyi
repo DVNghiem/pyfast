@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Any, List, Tuple, Dict
+from typing import Any, Callable, Dict, List, Tuple
 
 @dataclass
 class BaseBackend:
@@ -27,8 +27,7 @@ class SwaggerUI:
     title: str
     openapi_url: str
 
-    render_template: Callable[..., Any]
-    get_html_content: Callable[..., str]
+    def get_html_content(self) -> str: ...
 
 @dataclass
 class BackgroundTask:
@@ -170,3 +169,98 @@ class Scheduler:
         Get the next run time of a job
         """
         pass
+
+@dataclass
+class FunctionInfo:
+    """
+    The function info object passed to the route handler.
+
+    Attributes:
+        handler (Callable): The function to be called
+        is_async (bool): Whether the function is async or not
+    """
+
+    handler: Callable
+    is_async: bool
+
+class SocketHeld:
+    socket: Any
+
+@dataclass
+class Server:
+    router: Router
+    websocket_router: Any
+    startup_handler: Any
+    shutdown_handler: Any
+
+    def add_route(self, route: Route) -> None: ...
+    def set_router(self, router: Router) -> None: ...
+    def start(self, socket: SocketHeld, worker: int, max_blocking_threads: int) -> None: ...
+    def inject(self, key: str, value: Any) -> None: ...
+    def set_injected(self, injected: Dict[str, Any]) -> None: ...
+    def set_before_hooks(self, hooks: List[FunctionInfo]) -> None: ...
+    def set_after_hooks(self, hooks: List[FunctionInfo]) -> None: ...
+    def set_response_headers(self, headers: Dict[str, str]) -> None: ...
+
+class Route:
+    path: str
+    function: FunctionInfo
+    method: str
+
+    def matches(self, path: str, method: str) -> str: ...
+    def clone_route(self) -> Route: ...
+    def update_path(self, new_path: str) -> None: ...
+    def update_method(self, new_method: str) -> None: ...
+    def is_valid(self) -> bool: ...
+    def get_path_parans(self) -> List[str]: ...
+    def has_parameters(self) -> bool: ...
+    def normalized_path(self) -> str: ...
+    def same_handler(self, other: Route) -> bool: ...
+
+class Router:
+    routes: List[Route]
+
+    def add_route(self, route: Route) -> None: ...
+    def remove_route(self, path: str, method: str) -> bool: ...
+    def get_route(self, path: str, method) -> Route | None: ...
+    def get_routes_by_path(self, path: str) -> List[Route]: ...
+    def get_routes_by_method(self, method: str) -> List[Route]: ...
+    def extend_route(self, routes: List[Route]) -> None: ...
+
+@dataclass
+class Header:
+    headers: Dict[str, str]
+
+@dataclass
+class Response:
+    status_code: int
+    response_type: str
+    headers: Any
+    description: str
+    file_path: str
+
+@dataclass
+class QueryParams:
+    queries: Dict[str, List[str]]
+
+@dataclass
+class UploadedFile:
+    name: str
+    content_type: str
+    path: str
+    size: int
+    content: bytes
+    filename: str
+
+@dataclass
+class BodyData:
+    json: bytes
+    files: List[UploadedFile]
+
+@dataclass
+class Request:
+    query_params: QueryParams
+    headers: Dict[str, str]
+    path_params: Dict[str, str]
+    body: BodyData
+    method: str

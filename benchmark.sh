@@ -1,7 +1,7 @@
 #!/bin/sh
 
 Help() {
-    echo "Benchmark script to get info about Robyn's performances."
+    echo "Benchmark script to get info about Hypern's performances."
     echo
     echo "USAGE:"
     echo "    benchmark [-h|m|n|y]"
@@ -66,7 +66,7 @@ sleep 1
 # oha will display benchmark results
 oha -n "$number" http://localhost:5005/benchmark
 
-# Kill subprocesses after exiting the script (python + robyn server)
+# Kill subprocesses after exiting the script (python + axum server)
 # (see https://stackoverflow.com/questions/360201/how-do-i-kill-background-processes-jobs-when-my-shell-script-exits)
 trap "trap - TERM && kill 0" INT TERM EXIT
 fuser -k 5005/tcp
