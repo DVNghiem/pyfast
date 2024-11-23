@@ -2,23 +2,21 @@
 from __future__ import annotations
 
 import asyncio
-import socket
 from typing import Any, Callable, List, TypeVar
 
 import orjson
 from typing_extensions import Annotated, Doc
 
 from hypern.datastructures import Contact, HTTPMethod, Info, License
-from hypern.exceptions import InvalidPortNumber
 from hypern.hypern import FunctionInfo, Router
 from hypern.hypern import Route as InternalRoute
-from hypern.logging import logger
 from hypern.openapi import SchemaGenerator, SwaggerUI
 from hypern.processpool import run_processes
 from hypern.response import HTMLResponse, JSONResponse
 from hypern.routing import Route
 from hypern.scheduler import Scheduler
 from hypern.middleware import Middleware
+from hypern.args_parser import ArgsConfig
 
 AppType = TypeVar("AppType", bound="Hypern")
 
@@ -193,6 +191,7 @@ class Hypern:
         self.middleware_before_request = []
         self.middleware_after_request = []
         self.response_headers = {}
+        self.args = ArgsConfig()
 
         for route in routes:
             self.router.extend_route(route(app=self).routes)
@@ -340,60 +339,30 @@ class Hypern:
             self.after_request()(after_request)
         return self
 
-    def is_port_in_use(self, port: int) -> bool:
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                return s.connect_ex(("localhost", port)) == 0
-        except Exception:
-            raise InvalidPortNumber(f"Invalid port number: {port}")
-
     def start(
         self,
-        host: Annotated[str, Doc("The host to run the server on. Defaults to `127.0.0.1`")] = "127.0.0.1",
-        port: Annotated[int, Doc("The port to run the server on. Defaults to `8080`")] = 8080,
-        workers: Annotated[int, Doc("The number of workers to run. Defaults to `1`")] = 1,
-        processes: Annotated[int, Doc("The number of processes to run. Defaults to `1`")] = 1,
-        max_blocking_threads: Annotated[int, Doc("The maximum number of blocking threads. Defaults to `100`")] = 1,
-        check_port: Annotated[bool, Doc("Check if the port is already in use. Defaults to `True`")] = False,
     ):
         """
         Starts the server with the specified configuration.
-
-        Args:
-            host (str): The host to run the server on. Defaults to `127.0.0.1`.
-            port (int): The port to run the server on. Defaults to `8080`.
-            workers (int): The number of workers to run. Defaults to `1`.
-            processes (int): The number of processes to run. Defaults to `1`.
-            max_blocking_threads (int): The maximum number of blocking threads. Defaults to `100`.
-            check_port (bool): Check if the port is already in use. Defaults to `True`.
-
         Raises:
             ValueError: If an invalid port number is entered when prompted.
 
         """
-        if check_port:
-            while self.is_port_in_use(port):
-                logger.error("Port %s is already in use. Please use a different port.", port)
-                try:
-                    port = int(input("Enter a different port: "))
-                except Exception:
-                    logger.error("Invalid port number. Please enter a valid port number.")
-                    continue
-
         if self.scheduler:
             self.scheduler.start()
 
         run_processes(
-            host=host,
-            port=port,
-            workers=workers,
-            processes=processes,
-            max_blocking_threads=max_blocking_threads,
+            host=self.args.host,
+            port=self.args.port,
+            workers=self.args.workers,
+            processes=self.args.processes,
+            max_blocking_threads=self.args.max_blocking_threads,
             router=self.router,
             injectables=self.injectables,
             before_request=self.middleware_before_request,
             after_request=self.middleware_after_request,
             response_headers=self.response_headers,
+            reload=self.args.reload,
         )
 
     def add_route(self, method: HTTPMethod, endpoint: str, handler: Callable[..., Any]):

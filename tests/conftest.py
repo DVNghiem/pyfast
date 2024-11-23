@@ -30,16 +30,14 @@ def kill_process(process: subprocess.Popen) -> None:
         pass
 
 
-def start_server(domain: str, port: int, is_dev: bool = False) -> subprocess.Popen:
+def start_server(domain: str, port: int) -> subprocess.Popen:
     """
     Call this method to wait for the server to start
     """
     # Start the server
     current_file_path = pathlib.Path(__file__).parent.resolve()
     server = os.path.join(current_file_path, "server.py")
-    command = ["python3", server]
-    if is_dev:
-        command.append("--dev")
+    command = ["python3", server, "--host", domain, "--port", str(port)]
     process = spawn_process(command)
 
     # Wait for the server to be reachable
