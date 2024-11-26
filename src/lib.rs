@@ -12,6 +12,7 @@ mod socket;
 mod executor;
 mod di;
 mod middlewares;
+mod database;
 
 #[pymodule]
 fn hypern(_py: Python<'_>, m: &PyModule) -> PyResult<()>  {
@@ -39,6 +40,11 @@ fn hypern(_py: Python<'_>, m: &PyModule) -> PyResult<()>  {
     m.add_class::<types::request::PyBodyData>()?;
     m.add_class::<types::request::PyUploadedFile>()?;
     m.add_class::<types::query::QueryParams>()?;
+    
+    m.add_class::<database::sql::connector::DatabaseConnection>()?;
+    m.add_class::<database::sql::config::DatabaseConfig>()?;
+    m.add_class::<database::sql::config::DatabaseType>()?;
+    
 
     pyo3::prepare_freethreaded_python();
     Ok(())

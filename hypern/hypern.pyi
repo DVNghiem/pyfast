@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Tuple
+from enum import Enum
 
 @dataclass
 class BaseBackend:
@@ -264,3 +265,22 @@ class Request:
     path_params: Dict[str, str]
     body: BodyData
     method: str
+
+class DatabaseType(Enum):
+    Postgres: str
+    MySQL: str
+    SQLite: str
+
+class DatabaseConfig:
+    driver: DatabaseType
+    url: str
+    max_connections: int = 10
+    min_connections: int = 1
+    idle_timeout: int = 30
+
+    options: Dict[str, Any] = {}
+
+@dataclass
+class DatabaseConnection:
+    def execute(self, query: str, params: Tuple) -> Any: ...
+    def fetch_all(self, query: str, params: Tuple) -> List: ...

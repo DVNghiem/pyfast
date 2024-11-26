@@ -18,6 +18,7 @@ serde = "1.0.187"
 serde_json = "1.0.109"
 uuid = {version = "*", features = ["v4"]}
 tokio = { version = "*", features = ["full"] }
+futures = "0.3.31"
 once_cell = "1.8"
 chrono = "0.4.38"
 chrono-tz = "0.10.0"
@@ -28,11 +29,15 @@ parking_lot = "0.12.3"
 socket2 = { version = "0.5.1", features = ["all"] }
 tempfile = "3.14.0"
 
+# tracing logging
 tower-http = { version = "0.6.1", features = ["trace"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
-anyhow = "1.0"
+anyhow = "1.0" # error handling
+
+# database
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "mysql", "sqlite", "chrono"] }
 
 [profile.release]
 codegen-units = 1
