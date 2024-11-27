@@ -1,5 +1,8 @@
+use std::sync::Arc;
+
 use pyo3::prelude::*;
 use sqlx::Database;
+use tokio::sync::Mutex;
 
 // Trait for dynamic parameter binding
 pub trait DynamicParameterBinder {
@@ -18,7 +21,6 @@ pub trait DynamicParameterBinder {
 
 // Base trait for database operations with dynamic parameters
 pub trait DatabaseOperations {
-    type Pool;
     type Row;
     type Arguments;
     type DatabaseType: Database;
@@ -28,24 +30,24 @@ pub trait DatabaseOperations {
     >;
 
     async fn execute(
-        &self,
-        pool: &Self::Pool,
+        &mut self,
+        transaction: Arc<Mutex<sqlx::Transaction<'static, Self::DatabaseType>>>,
         query: &str,
         params: Vec<&PyAny>,
     ) -> Result<u64, PyErr>;
 
     async fn fetch_all(
-        &self,
+        &mut self,
         py: Python<'_>,
-        pool: &Self::Pool,
+        transaction: Arc<Mutex<sqlx::Transaction<'static, Self::DatabaseType>>>,
         query: &str,
         params: Vec<&PyAny>,
     ) -> Result<Vec<PyObject>, PyErr>;
 
     async fn stream_data(
-        &self,
+        &mut self,
         py: Python<'_>, 
-        pool: &Self::Pool,
+        transaction: Arc<Mutex<sqlx::Transaction<'static, Self::DatabaseType>>>,
         query: &str,
         params: Vec<&PyAny>,
         chunk_size: usize,

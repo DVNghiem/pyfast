@@ -1,8 +1,11 @@
+use std::sync::Arc;
+use tokio::sync::Mutex;
+
 use futures::StreamExt;
 use pyo3::{prelude::*, types::PyDict};
 use sqlx::{
     mysql::{MySqlArguments, MySqlRow},
-    Column, MySqlPool, Row, ValueRef,
+    Column, Row, ValueRef,
 };
 
 use super::db_trait::{DatabaseOperations, DynamicParameterBinder};
@@ -79,27 +82,26 @@ impl DynamicParameterBinder for MySqlParameterBinder {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct MySqlDatabase;
 
 impl DatabaseOperations for MySqlDatabase {
-    type Pool = MySqlPool;
     type Row = MySqlRow;
     type Arguments = MySqlArguments;
     type DatabaseType = sqlx::MySql;
     type ParameterBinder = MySqlParameterBinder;
 
     async fn execute(
-        &self,
-        pool: &Self::Pool,
+        &mut self,
+        transaction: Arc<Mutex<sqlx::Transaction<'static, sqlx::MySql>>>,
         query: &str,
         params: Vec<&PyAny>,
     ) -> Result<u64, PyErr> {
         let parameter_binder = MySqlParameterBinder;
         let query_builder = parameter_binder.bind_parameters(query, params)?;
-
+        let mut guard = transaction.lock().await;
         let result = query_builder
-            .execute(pool)
+            .execute(&mut **guard)
             .await
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
 
@@ -107,17 +109,17 @@ impl DatabaseOperations for MySqlDatabase {
     }
 
     async fn fetch_all(
-        &self,
+        &mut self,
         py: Python<'_>,
-        pool: &Self::Pool,
+        transaction: Arc<Mutex<sqlx::Transaction<'static, sqlx::MySql>>>,
         query: &str,
         params: Vec<&PyAny>,
     ) -> Result<Vec<PyObject>, PyErr> {
         let parameter_binder = MySqlParameterBinder;
         let query_builder = parameter_binder.bind_parameters(query, params)?;
-
+        let mut guard = transaction.lock().await;
         let rows = query_builder
-            .fetch_all(pool)
+            .fetch_all(&mut **guard)
             .await
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
 
@@ -130,16 +132,17 @@ impl DatabaseOperations for MySqlDatabase {
     }
 
     async fn stream_data(
-        &self,
+        &mut self,
         py: Python<'_>,
-        pool: &Self::Pool,
+        transaction: Arc<Mutex<sqlx::Transaction<'static, sqlx::MySql>>>,
         query: &str,
         params: Vec<&PyAny>,
         chunk_size: usize,
     ) -> PyResult<Vec<Vec<PyObject>>> {
         let parameter_binder = MySqlParameterBinder;
         let query_builder = parameter_binder.bind_parameters(query, params)?;
-        let mut stream = query_builder.fetch(&*pool);
+        let mut guard = transaction.lock().await;
+        let mut stream = query_builder.fetch(&mut **guard);
         let mut chunks: Vec<Vec<PyObject>> = Vec::new();
         let mut current_chunk: Vec<PyObject> = Vec::new();
 

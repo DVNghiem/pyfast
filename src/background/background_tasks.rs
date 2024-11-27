@@ -3,7 +3,7 @@ use pyo3::prelude::*;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokio::task::JoinHandle;
-use crate::utils::get_runtime;
+use crate::utils::get_base_runtime;
 
 #[pyclass]
 struct TaskResult {
@@ -58,7 +58,7 @@ impl BackgroundTasks {
     fn execute_all(&self) -> PyResult<()> {
         let tasks = Arc::clone(&self.tasks);
         let running_tasks = Arc::clone(&self.running_tasks);
-        let runtime = get_runtime();
+        let runtime = get_base_runtime();
 
         // Move tasks to running_tasks and spawn them
         let mut tasks_lock = tasks.lock().unwrap();
@@ -88,7 +88,7 @@ impl BackgroundTasks {
     fn execute_task(&self, task_id: &str) -> PyResult<()> {
         let mut tasks = self.tasks.lock().unwrap();
         if let Some(task) = tasks.remove(task_id) {
-            let runtime = get_runtime();
+            let runtime = get_base_runtime();
             let running_tasks = Arc::clone(&self.running_tasks);
 
             let handle = runtime.spawn(async move {
@@ -118,7 +118,7 @@ impl BackgroundTasks {
 
     fn get_task_result(&self, task_id: &str) -> PyResult<Option<TaskResult>> {
         let mut running_tasks = self.running_tasks.lock().unwrap();
-        let runtime = get_runtime();
+        let runtime = get_base_runtime();
 
         if let Some(handle) = running_tasks.remove(task_id) {
             if handle.is_finished() {

@@ -1,10 +1,13 @@
+use std::sync::Arc;
+
 use chrono::{Datelike, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
 use futures::StreamExt;
 use pyo3::{prelude::*, types::{PyBool, PyDate, PyDateAccess, PyDateTime, PyDict, PyFloat, PyInt, PyList, PyString, PyTime, PyTimeAccess}};
 use serde_json::to_string;
 use sqlx::{
-    postgres::{PgArguments, PgPool, PgRow}, types::{Json, JsonValue}, Column, Row, ValueRef
+    postgres::{PgArguments, PgRow}, types::{Json, JsonValue}, Column, Row, ValueRef
 };
+use tokio::sync::Mutex;
 
 use super::db_trait::{DatabaseOperations, DynamicParameterBinder};
 // Similarly implement for other database types...
@@ -192,27 +195,26 @@ impl DynamicParameterBinder for PostgresParameterBinder {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct PostgresDatabase;
 
 impl DatabaseOperations for PostgresDatabase {
-    type Pool = PgPool;
     type Row = PgRow;
     type Arguments = sqlx::postgres::PgArguments;
     type DatabaseType = sqlx::Postgres;
     type ParameterBinder = PostgresParameterBinder;
 
     async fn execute(
-        &self,
-        pool: &Self::Pool,
+        &mut self,
+        transaction: Arc<Mutex<sqlx::Transaction<'static, sqlx::Postgres>>>,
         query: &str,
         params: Vec<&PyAny>,
     ) -> Result<u64, PyErr> {
         let parameter_binder = PostgresParameterBinder;
         let query_builder = parameter_binder.bind_parameters(query, params)?;
-
+        let mut guard = transaction.lock().await;
         let result = query_builder
-            .execute(pool)
+            .execute(&mut **guard)
             .await
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
 
@@ -220,17 +222,17 @@ impl DatabaseOperations for PostgresDatabase {
     }
 
     async fn fetch_all(
-        &self,
+        &mut self,
         py: Python<'_>,
-        pool: &Self::Pool,
+        transaction: Arc<Mutex<sqlx::Transaction<'static, sqlx::Postgres>>>,
         query: &str,
         params: Vec<&PyAny>,
     ) -> Result<Vec<PyObject>, PyErr> {
         let parameter_binder = PostgresParameterBinder;
         let query_builder = parameter_binder.bind_parameters(query, params)?;
-
+        let mut guard = transaction.lock().await;
         let rows = query_builder
-            .fetch_all(pool)
+            .fetch_all(&mut **guard)
             .await
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
 
@@ -243,16 +245,17 @@ impl DatabaseOperations for PostgresDatabase {
     }
 
     async fn stream_data(
-        &self,
+        &mut self,
         py: Python<'_>,
-        pool: &Self::Pool,
+        transaction: Arc<Mutex<sqlx::Transaction<'static, sqlx::Postgres>>>,
         query: &str,
         params: Vec<&PyAny>,
         chunk_size: usize,
     ) -> PyResult<Vec<Vec<PyObject>>> {
         let parameter_binder = PostgresParameterBinder;
         let query_builder = parameter_binder.bind_parameters(query, params)?;
-        let mut stream = query_builder.fetch(&*pool);
+        let mut guard = transaction.lock().await;
+        let mut stream = query_builder.fetch(&mut **guard);
         let mut chunks: Vec<Vec<PyObject>> = Vec::new();
         let mut current_chunk: Vec<PyObject> = Vec::new();
 

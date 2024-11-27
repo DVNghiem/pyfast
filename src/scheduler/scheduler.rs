@@ -8,7 +8,7 @@ use std::thread;
 use cron::Schedule;
 use std::str::FromStr;
 
-use crate::utils::get_runtime;
+use crate::utils::get_base_runtime;
 use super::retry::RetryPolicy;
 use super::job::{Job, JobType};
 
@@ -101,7 +101,7 @@ impl Scheduler {
 
         let jobs = Arc::clone(&self.jobs);
         let is_running = Arc::clone(&self.is_running);
-        let runtime = get_runtime();
+        let runtime = get_base_runtime();
         let completed_jobs = Arc::clone(&self.completed_jobs);
 
         thread::spawn(move || {

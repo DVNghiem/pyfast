@@ -1,11 +1,14 @@
+use std::sync::Arc;
+
 use super::db_trait::{DatabaseOperations, DynamicParameterBinder};
 use futures::StreamExt;
 use pyo3::{prelude::*, types::PyDict};
 use sqlx::{
     query::Query,
-    sqlite::{SqliteArguments, SqlitePool, SqliteRow},
+    sqlite::{SqliteArguments, SqliteRow},
     Column, Row, Sqlite, ValueRef,
 };
+use tokio::sync::Mutex;
 
 pub struct SqliteParameterBinder;
 
@@ -86,28 +89,27 @@ impl DynamicParameterBinder for SqliteParameterBinder {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 #[pyclass]
 pub struct SqliteDatabase;
 
 impl DatabaseOperations for SqliteDatabase {
-    type Pool = SqlitePool;
     type Row = SqliteRow;
     type Arguments = SqliteArguments<'static>;
     type DatabaseType = sqlx::Sqlite;
     type ParameterBinder = SqliteParameterBinder;
 
     async fn execute(
-        &self,
-        pool: &Self::Pool,
+        &mut self,
+        transaction: Arc<Mutex<sqlx::Transaction<'static, sqlx::Sqlite>>>,
         query: &str,
         params: Vec<&PyAny>,
     ) -> Result<u64, PyErr> {
         let parameter_binder = SqliteParameterBinder;
         let query_builder = parameter_binder.bind_parameters(query, params)?;
-
+        let mut guard = transaction.lock().await;
         let result = query_builder
-            .execute(pool)
+            .execute(&mut **guard)
             .await
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
 
@@ -115,17 +117,17 @@ impl DatabaseOperations for SqliteDatabase {
     }
 
     async fn fetch_all(
-        &self,
+        &mut self,
         py: Python<'_>,
-        pool: &Self::Pool,
+        transaction: Arc<Mutex<sqlx::Transaction<'static, sqlx::Sqlite>>>,
         query: &str,
         params: Vec<&PyAny>,
     ) -> Result<Vec<PyObject>, PyErr> {
         let parameter_binder = SqliteParameterBinder;
         let query_builder = parameter_binder.bind_parameters(query, params)?;
-
+        let mut guard = transaction.lock().await;
         let rows = query_builder
-            .fetch_all(pool)
+            .fetch_all(&mut **guard)
             .await
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
 
@@ -138,16 +140,17 @@ impl DatabaseOperations for SqliteDatabase {
     }
 
     async fn stream_data(
-        &self,
+        &mut self,
         py: Python<'_>,
-        pool: &Self::Pool,
+        transaction: Arc<Mutex<sqlx::Transaction<'static, sqlx::Sqlite>>>,
         query: &str,
         params: Vec<&PyAny>,
         chunk_size: usize,
     ) -> PyResult<Vec<Vec<PyObject>>> {
         let parameter_binder = SqliteParameterBinder;
         let query_builder = parameter_binder.bind_parameters(query, params)?;
-        let mut stream = query_builder.fetch(&*pool);
+        let mut guard = transaction.lock().await;
+        let mut stream = query_builder.fetch(&mut **guard);
         let mut chunks: Vec<Vec<PyObject>> = Vec::new();
         let mut current_chunk: Vec<PyObject> = Vec::new();
 

@@ -5,10 +5,15 @@ use tokio::runtime::Runtime;
 
 use once_cell::sync::OnceCell;
 
-static RUNTIME: OnceCell<Runtime> = OnceCell::new();
+static BASE_RUNTIME: OnceCell<Runtime> = OnceCell::new();
+static DB_RUNTIME: OnceCell<Runtime> = OnceCell::new();
 
-pub fn get_runtime() -> &'static Runtime {
-    RUNTIME.get_or_init(|| Runtime::new().unwrap())
+pub fn get_base_runtime() -> &'static Runtime {
+    BASE_RUNTIME.get_or_init(|| Runtime::new().unwrap())
+}
+
+pub fn get_db_runtime() -> &'static Runtime {
+    DB_RUNTIME.get_or_init(|| Runtime::new().unwrap())
 }
 
 pub fn yaml_to_json(yaml: &Yaml) -> Value {
