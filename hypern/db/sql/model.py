@@ -71,7 +71,7 @@ class Model(metaclass=MetaModel):
         fields_sql.extend(foreign_keys)
         joined_fields_sql = ", \n ".join(fields_sql)
 
-        create_table = f"CREATE TABLE {cls.table_name()} (\n  " f"{joined_fields_sql} \n"
+        create_table = f"CREATE TABLE {cls.table_name()} (\n  {joined_fields_sql} \n"
 
         return f"{create_table};\n" + ";\n".join(indexes_sql)
 
@@ -93,8 +93,8 @@ class Model(metaclass=MetaModel):
 
     @classmethod
     def _get_index_sql(cls, name) -> str:
-        return f"CREATE INDEX idx_{cls.table_name()}_{name} " f"ON {cls.table_name()} ({name})"
+        return f"CREATE INDEX idx_{cls.table_name()}_{name} ON {cls.table_name()} ({name})"
 
     @classmethod
     def _get_foreign_key_sql(cls, name, field) -> str:
-        return f"FOREIGN KEY ({name}) REFERENCES {field.to_model}(id) " f"ON DELETE {field.on_delete} " f"ON UPDATE {field.on_update}"
+        return f"FOREIGN KEY ({name}) REFERENCES {field.to_model}(id) ON DELETE {field.on_delete} ON UPDATE {field.on_update}"
