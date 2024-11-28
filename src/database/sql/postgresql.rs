@@ -206,15 +206,15 @@ impl DatabaseOperations for PostgresDatabase {
 
     async fn execute(
         &mut self,
-        transaction: Arc<Mutex<sqlx::Transaction<'static, sqlx::Postgres>>>,
+        transaction: Arc<Mutex<Option<sqlx::Transaction<'static, sqlx::Postgres>>>>,
         query: &str,
         params: Vec<&PyAny>,
     ) -> Result<u64, PyErr> {
         let parameter_binder = PostgresParameterBinder;
         let query_builder = parameter_binder.bind_parameters(query, params)?;
-        let mut guard = transaction.lock().await;
+        let mut guard = transaction.lock().await.take().unwrap();
         let result = query_builder
-            .execute(&mut **guard)
+            .execute(&mut *guard)
             .await
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
 
@@ -224,15 +224,15 @@ impl DatabaseOperations for PostgresDatabase {
     async fn fetch_all(
         &mut self,
         py: Python<'_>,
-        transaction: Arc<Mutex<sqlx::Transaction<'static, sqlx::Postgres>>>,
+        transaction: Arc<Mutex<Option<sqlx::Transaction<'static, sqlx::Postgres>>>>,
         query: &str,
         params: Vec<&PyAny>,
     ) -> Result<Vec<PyObject>, PyErr> {
         let parameter_binder = PostgresParameterBinder;
         let query_builder = parameter_binder.bind_parameters(query, params)?;
-        let mut guard = transaction.lock().await;
+        let mut guard = transaction.lock().await.take().unwrap();
         let rows = query_builder
-            .fetch_all(&mut **guard)
+            .fetch_all(&mut *guard)
             .await
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
 
@@ -247,15 +247,15 @@ impl DatabaseOperations for PostgresDatabase {
     async fn stream_data(
         &mut self,
         py: Python<'_>,
-        transaction: Arc<Mutex<sqlx::Transaction<'static, sqlx::Postgres>>>,
+        transaction: Arc<Mutex<Option<sqlx::Transaction<'static, sqlx::Postgres>>>>,
         query: &str,
         params: Vec<&PyAny>,
         chunk_size: usize,
     ) -> PyResult<Vec<Vec<PyObject>>> {
         let parameter_binder = PostgresParameterBinder;
         let query_builder = parameter_binder.bind_parameters(query, params)?;
-        let mut guard = transaction.lock().await;
-        let mut stream = query_builder.fetch(&mut **guard);
+        let mut guard = transaction.lock().await.take().unwrap();
+        let mut stream = query_builder.fetch(&mut *guard);
         let mut chunks: Vec<Vec<PyObject>> = Vec::new();
         let mut current_chunk: Vec<PyObject> = Vec::new();
 

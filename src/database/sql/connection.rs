@@ -71,7 +71,7 @@ impl DatabaseConnection {
                         Ok::<DatabaseTransaction, SqlxError>(DatabaseTransaction::from_transaction(
                             DatabaseTransactionType::Sqlite(
                                 SqliteDatabase,
-                                std::sync::Arc::new(tokio::sync::Mutex::new(transaction)),
+                                std::sync::Arc::new(tokio::sync::Mutex::new(Some(transaction))),
                             ),
                         ))
                     }
@@ -83,7 +83,7 @@ impl DatabaseConnection {
                         Ok::<DatabaseTransaction, SqlxError>(DatabaseTransaction::from_transaction(
                             DatabaseTransactionType::Postgres(
                                 PostgresDatabase,
-                                std::sync::Arc::new(tokio::sync::Mutex::new(transaction)),
+                                std::sync::Arc::new(tokio::sync::Mutex::new(Some(transaction))),
                             ),
                         ))
                     }
@@ -95,7 +95,7 @@ impl DatabaseConnection {
                         Ok::<DatabaseTransaction, SqlxError>(DatabaseTransaction::from_transaction(
                             DatabaseTransactionType::MySql(
                                 MySqlDatabase,
-                                std::sync::Arc::new(tokio::sync::Mutex::new(transaction)),
+                                std::sync::Arc::new(tokio::sync::Mutex::new(Some(transaction))),
                             ),
                         ))
                     }

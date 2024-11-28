@@ -31,7 +31,7 @@ pub trait DatabaseOperations {
 
     async fn execute(
         &mut self,
-        transaction: Arc<Mutex<sqlx::Transaction<'static, Self::DatabaseType>>>,
+        transaction: Arc<Mutex<Option<sqlx::Transaction<'static, Self::DatabaseType>>>>,
         query: &str,
         params: Vec<&PyAny>,
     ) -> Result<u64, PyErr>;
@@ -39,7 +39,7 @@ pub trait DatabaseOperations {
     async fn fetch_all(
         &mut self,
         py: Python<'_>,
-        transaction: Arc<Mutex<sqlx::Transaction<'static, Self::DatabaseType>>>,
+        transaction: Arc<Mutex<Option<sqlx::Transaction<'static, Self::DatabaseType>>>>,
         query: &str,
         params: Vec<&PyAny>,
     ) -> Result<Vec<PyObject>, PyErr>;
@@ -47,7 +47,7 @@ pub trait DatabaseOperations {
     async fn stream_data(
         &mut self,
         py: Python<'_>, 
-        transaction: Arc<Mutex<sqlx::Transaction<'static, Self::DatabaseType>>>,
+        transaction: Arc<Mutex<Option<sqlx::Transaction<'static, Self::DatabaseType>>>>,
         query: &str,
         params: Vec<&PyAny>,
         chunk_size: usize,
