@@ -239,6 +239,7 @@ class Response:
     headers: Any
     description: str
     file_path: str
+    context_id: str
 
 @dataclass
 class QueryParams:
@@ -265,6 +266,7 @@ class Request:
     path_params: Dict[str, str]
     body: BodyData
     method: str
+    context_id: str
 
 class DatabaseType(Enum):
     Postgres: str
@@ -280,7 +282,18 @@ class DatabaseConfig:
 
     options: Dict[str, Any] = {}
 
+# @dataclass
+# class DatabaseConnection:
+
+#     def transaction(self) -> DatabaseTransaction: ...
+
 @dataclass
-class DatabaseConnection:
-    def execute(self, query: str, params: Tuple) -> Any: ...
-    def fetch_all(self, query: str, params: Tuple) -> List: ...
+class DatabaseTransaction:
+    def execute(self, query: str, params: List[Any]) -> int: ...
+    def fetch_all(self, query: str, params: List[Any]) -> List[Dict[str, Any]]: ...
+    def stream_data(self, query: str, params: List[Any], chunk_size: int) -> Dict[str, Any]: ...
+    def commit(self) -> None: ...
+    def rollback(self) -> None: ...
+    def __del__(self) -> None: ...
+    def __enter__(self) -> None: ...
+    def __exit__(self, _exc_type, _exc_value, _traceback) -> None: ...

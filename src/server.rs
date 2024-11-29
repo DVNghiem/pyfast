@@ -1,11 +1,14 @@
 use crate::{
+    database::sql::{config::DatabaseConfig, connection::DatabaseConnection},
     executor::{execute_http_function, execute_middleware_function},
     middlewares::base::Middleware,
     router::{router::Router, ws::WebSocketRouter},
     socket::SocketHeld,
     types::{function_info::FunctionInfo, middleware::MiddlewareReturn, request::Request},
+    utils::get_server_runtime,
 };
 use pyo3::{exceptions::PyValueError, prelude::*, types::PyDict};
+use sqlx::database;
 use std::{
     collections::HashMap,
     env,
@@ -23,8 +26,8 @@ use std::{
 
 use axum::{
     body::Body,
-    extract::Request as HttpRequest,
-    http::StatusCode,
+    extract::{FromRef, FromRequestParts, Request as HttpRequest, State},
+    http::{request::Parts, StatusCode},
     response::{IntoResponse, Response as ServerResponse},
     routing::{any, delete, get, head, options, patch, post, put, trace},
     Extension, Router as RouterServer,
@@ -147,23 +150,27 @@ impl Server {
         let copy_middlewares = self.middlewares.clone();
         let extra_headers = self.extra_headers.clone().lock().unwrap().clone();
         thread::spawn(move || {
-            let rt = tokio::runtime::Builder::new_multi_thread()
-                .worker_threads(workers)
-                .max_blocking_threads(max_blocking_threads)
-                .thread_keep_alive(Duration::from_secs(60))
-                .thread_name("hypern-worker")
-                .enable_all()
-                .build()
-                .unwrap();
+            let rt = get_server_runtime(workers, max_blocking_threads);
             debug!(
                 "Server start with {} workers and {} max blockingthreads",
                 workers, max_blocking_threads
             );
             debug!("Waiting for process to start...");
 
+            let db_config = DatabaseConfig {
+                driver: crate::database::sql::config::DatabaseType::Postgres,
+                url: "postgres://nghiem:nghiem@localhost:5432/mms_stag".to_string(),
+                max_connections: 10,
+                min_connections: 1,
+                idle_timeout: 30,
+                options: None,
+            };
+
             rt.block_on(async move {
+                let database = DatabaseConnection::new(db_config).await;
+
                 let task_locals = task_locals_copy.clone();
-                let mut app = RouterServer::new().with_state(inject_copy.clone());
+                let mut app = RouterServer::new();
 
                 // handle logic for each route with pyo3
                 for route in router.lock().unwrap().iter() {
@@ -197,6 +204,7 @@ impl Server {
                     };
                 }
                 app = app.layer(Extension(inject_copy.clone()));
+                app = app.layer(Extension(database.clone()));
                 app = app.layer(
                     TraceLayer::new_for_http().on_response(
                         DefaultOnResponse::new()
@@ -244,7 +252,20 @@ async fn execute_request(
     middlewares: Middleware,
     extra_headers: HashMap<String, String>,
 ) -> ServerResponse {
-    let deps = req.extensions().get::<DependencyInjection>().cloned();
+    let mut deps = req.extensions().get::<DependencyInjection>().cloned();
+    let database = req.extensions().get::<DatabaseConnection>().cloned();
+    let session_db = database.unwrap().transaction().await;
+    println!("session_db {:?}", session_db);
+
+    let deps_copy = deps.clone();
+
+    deps = Python::with_gil(|py| {
+        let deps_copy = deps_copy.unwrap();
+        let session_db_py = Py::new(py, session_db).unwrap();
+        let _ = deps_copy.add_dependency("db_transaction", session_db_py.into_py(py));
+        Some(deps_copy)
+    });
+
     let mut request = Request::from_request(req).await;
 
     let mut response_builder = ServerResponse::builder();
@@ -274,6 +295,8 @@ async fn execute_request(
     let mut response = execute_http_function(&request, &function, deps)
         .await
         .unwrap();
+
+    response.context_id = request.context_id;
 
     for after_middleware in middlewares.get_after_hooks() {
         response = match execute_middleware_function(&response, &after_middleware).await {

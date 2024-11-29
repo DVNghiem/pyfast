@@ -1,6 +1,8 @@
 from enum import Enum
 from typing import Any, List, Tuple, Union
 
+from hypern.hypern import DatabaseTransaction
+
 
 class JoinType(Enum):
     INNER = "INNER JOIN"
@@ -772,11 +774,11 @@ class QuerySet:
             elif self._skip_locked:
                 parts.append("SKIP LOCKED")
 
-    def execute(self) -> List[Tuple]:
+    def execute(self, db_transaction: DatabaseTransaction) -> List[Tuple]:
         """Execute the query and return results"""
-        # sql, params = self.to_sql()
-        # it will be call to rust script
-        NotImplemented()
+        sql, params = self.to_sql()
+        result = db_transaction.fetch_all(sql, params)
+        return result
 
     def count(self) -> int:
         """Return the count of rows that would be returned by this query"""

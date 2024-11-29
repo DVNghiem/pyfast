@@ -21,38 +21,10 @@ pub struct Response {
     #[pyo3(from_py_with = "get_description_from_pyobject")]
     pub description: Vec<u8>,
     pub file_path: Option<String>,
+    pub context_id: String
 }
 
 impl Response {
-    pub fn not_found(headers: Option<&Header>) -> Self {
-        let headers = match headers {
-            Some(headers) => headers.clone(),
-            None => Header::new(None),
-        };
-
-        Self {
-            status_code: 404,
-            response_type: "text".to_string(),
-            headers,
-            description: "Not found".to_owned().into_bytes(),
-            file_path: None,
-        }
-    }
-
-    pub fn internal_server_error(headers: Option<&Header>) -> Self {
-        let headers = match headers {
-            Some(headers) => headers.clone(),
-            None => Header::new(None),
-        };
-
-        Self {
-            status_code: 500,
-            response_type: "text".to_string(),
-            headers,
-            description: "Internal server error".to_owned().into_bytes(),
-            file_path: None,
-        }
-    }
 
     pub fn to_axum_response(&self, extra_headers: HashMap<String, String>) -> axum::http::Response<axum::body::Body> {
         let mut headers = HeaderMap::new();
@@ -96,6 +68,7 @@ impl ToPyObject for Response {
             headers,
             description,
             file_path: self.file_path.clone(),
+            context_id: self.context_id.clone()
         };
         Py::new(py, response).unwrap().as_ref(py).into()
     }
@@ -114,6 +87,9 @@ pub struct PyResponse {
     pub description: Py<PyAny>,
     #[pyo3(get)]
     pub file_path: Option<String>,
+    #[pyo3(get)]
+    pub context_id: String
+
 }
 
 #[pymethods]
@@ -147,6 +123,7 @@ impl PyResponse {
             headers: headers_output,
             description,
             file_path: None,
+            context_id: "".to_string() // null and set from request
         })
     }
 

@@ -119,15 +119,15 @@ impl DatabaseOperations for SqliteDatabase {
     async fn fetch_all(
         &mut self,
         py: Python<'_>,
-        transaction: Arc<Mutex<Option<sqlx::Transaction<'static, sqlx::Sqlite>>>>,
+        transaction: Arc<Mutex<sqlx::Transaction<'static, sqlx::Sqlite>>>,
         query: &str,
         params: Vec<&PyAny>,
     ) -> Result<Vec<PyObject>, PyErr> {
         let parameter_binder = SqliteParameterBinder;
         let query_builder = parameter_binder.bind_parameters(query, params)?;
-        let mut guard = transaction.lock().await.take().unwrap();
+        let mut guard = transaction.lock().await;
         let rows = query_builder
-            .fetch_all(&mut *guard)
+            .fetch_all(&mut **guard)
             .await
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
 

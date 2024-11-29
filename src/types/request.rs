@@ -41,7 +41,6 @@ impl ToPyObject for UploadedFile {
         };
         Py::new(py, uploaded_file).unwrap().as_ref(py).into()
     }
-    
 }
 
 #[derive(Debug, Clone)]
@@ -79,10 +78,12 @@ impl ToPyObject for BodyData {
         let json = PyBytes::new(py, &json);
         let files: Vec<Py<PyAny>> = files.into_iter().map(|file| file.to_object(py)).collect();
         let files = PyList::new(py, files);
-        let body = PyBodyData { json: json.into(), files: files.into() };
+        let body = PyBodyData {
+            json: json.into(),
+            files: files.into(),
+        };
         Py::new(py, body).unwrap().as_ref(py).into()
     }
-    
 }
 
 #[derive(Debug, Clone)]
@@ -102,6 +103,7 @@ pub struct Request {
     pub method: String,
     pub path_params: HashMap<String, String>,
     pub body: BodyData,
+    pub context_id: String,
 }
 
 impl ToPyObject for Request {
@@ -117,6 +119,7 @@ impl ToPyObject for Request {
             headers,
             body,
             method: self.method.clone(),
+            context_id: self.context_id.clone(),
         };
         Py::new(py, request).unwrap().as_ref(py).into()
     }
@@ -227,7 +230,8 @@ impl Request {
             headers: headers.clone(),
             method,
             path_params: HashMap::new(),
-            body: body,
+            body,
+            context_id: uuid::Uuid::new_v4().to_string(),
         }
     }
 }
@@ -245,6 +249,8 @@ pub struct PyRequest {
     pub body: PyBodyData,
     #[pyo3(get)]
     pub method: String,
+    #[pyo3(get)]
+    pub context_id: String,
 }
 
 #[pymethods]
@@ -257,6 +263,7 @@ impl PyRequest {
         path_params: Py<PyDict>,
         body: PyBodyData,
         method: String,
+        context_id: String,
     ) -> Self {
         Self {
             query_params,
@@ -264,6 +271,7 @@ impl PyRequest {
             path_params,
             body,
             method,
+            context_id,
         }
     }
 
@@ -280,7 +288,6 @@ impl PyRequest {
         match serde_json::from_str(body.extract()?) {
             Ok(Value::Object(map)) => {
                 let dict = PyDict::new(py);
-
                 for (key, value) in map.iter() {
                     let py_key = key.to_string().into_py(py);
                     let py_value = match value {

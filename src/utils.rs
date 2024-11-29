@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use pyo3::{types::{PyBytes, PyString}, PyAny, PyResult};
 use yaml_rust::Yaml;
 use serde_json::Value;
@@ -6,15 +8,24 @@ use tokio::runtime::Runtime;
 use once_cell::sync::OnceCell;
 
 static BASE_RUNTIME: OnceCell<Runtime> = OnceCell::new();
-static DB_RUNTIME: OnceCell<Runtime> = OnceCell::new();
+static SERVER_RUNTIME: OnceCell<Runtime> = OnceCell::new();
 
 pub fn get_base_runtime() -> &'static Runtime {
     BASE_RUNTIME.get_or_init(|| Runtime::new().unwrap())
 }
 
-pub fn get_db_runtime() -> &'static Runtime {
-    DB_RUNTIME.get_or_init(|| Runtime::new().unwrap())
+
+pub fn get_server_runtime(workers: usize, max_blocking_threads: usize) -> &'static Runtime {
+    SERVER_RUNTIME.get_or_init(|| tokio::runtime::Builder::new_multi_thread()
+    .worker_threads(workers)
+    .max_blocking_threads(max_blocking_threads)
+    .thread_keep_alive(Duration::from_secs(60))
+    .thread_name("hypern-worker")
+    .enable_all()
+    .build()
+    .unwrap())
 }
+
 
 pub fn yaml_to_json(yaml: &Yaml) -> Value {
     match yaml {

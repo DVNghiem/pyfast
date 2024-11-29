@@ -5,7 +5,9 @@ use sqlx::{
     postgres::{PgConnectOptions, PgPoolOptions},
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
     Pool,
+    ConnectOptions,
 };
+use tracing::log::LevelFilter;
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -24,41 +26,34 @@ pub struct DatabaseConfig {
     pub url: String,
 
     // Connection pool settings
-    #[serde(default = "default_max_connections")]
     pub max_connections: u32,
 
-    #[serde(default = "default_min_connections")]
     pub min_connections: u32,
 
-    #[serde(default = "default_idle_timeout")]
     pub idle_timeout: u64,
 
     // Additional database-specific options
     pub options: Option<HashMap<String, String>>,
 }
 
-// Default configuration values
-fn default_max_connections() -> u32 {
-    10
-}
-fn default_min_connections() -> u32 {
-    1
-}
-fn default_idle_timeout() -> u64 {
-    600
-}
-
 #[pymethods]
 impl DatabaseConfig {
     #[new]
-    fn new(driver: DatabaseType, url: &str) -> Self {
+    fn new(
+        driver: DatabaseType,
+        url: &str,
+        max_connections: u32,
+        min_connections: u32,
+        idle_timeout: u64,
+        options: Option<HashMap<String, String>>,
+    ) -> Self {
         DatabaseConfig {
             driver,
             url: url.to_string(),
-            max_connections: default_max_connections(),
-            min_connections: default_min_connections(),
-            idle_timeout: default_idle_timeout(),
-            options: None,
+            max_connections,
+            min_connections,
+            idle_timeout,
+            options,
         }
     }
 }
@@ -67,13 +62,16 @@ impl DatabaseConfig {
     // Create PostgreSQL connection pool
     pub async fn create_postgres_pool(&self) -> Result<Pool<sqlx::Postgres>, sqlx::Error> {
         // Parse connection options
-        let connect_options = self.url.parse::<PgConnectOptions>()?;
 
+        let mut connect_options = self.url.parse::<PgConnectOptions>()?;
+        connect_options = connect_options.log_statements(LevelFilter::Debug);
+        
         // Create pool with configured options
         PgPoolOptions::new()
             .max_connections(self.max_connections)
             .min_connections(self.min_connections)
             .idle_timeout(Some(Duration::from_secs(self.idle_timeout)))
+            .acquire_timeout(Duration::from_secs(self.idle_timeout))
             .connect_with(connect_options)
             .await
     }
@@ -86,6 +84,7 @@ impl DatabaseConfig {
             .max_connections(self.max_connections)
             .min_connections(self.min_connections)
             .idle_timeout(Some(Duration::from_secs(self.idle_timeout)))
+            .acquire_timeout(Duration::from_secs(self.idle_timeout))
             .connect_with(connect_options)
             .await
     }
