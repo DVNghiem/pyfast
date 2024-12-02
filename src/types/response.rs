@@ -6,11 +6,20 @@ use axum::{
 };
 use pyo3::{
     prelude::*,
-    types::{PyBytes, PyDict},
+    types::{PyBytes, PyDict, PyString},
 };
 
 use super::header::Header;
-use crate::utils::get_description_from_pyobject;
+
+fn get_description_from_pyobject(description: &PyAny) -> PyResult<Vec<u8>> {
+    if let Ok(s) = description.downcast::<PyString>() {
+        Ok(s.to_string().into_bytes())
+    } else if let Ok(b) = description.downcast::<PyBytes>() {
+        Ok(b.as_bytes().to_vec())
+    } else {
+        Ok(vec![])
+    }
+}
 
 #[derive(Debug, Clone, FromPyObject)]
 pub struct Response {
