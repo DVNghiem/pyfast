@@ -264,3 +264,6 @@ class Request:
     path_params: Dict[str, str]
     body: BodyData
     method: str
+    remote_addr: str
+    timestamp: float
+    context_id: str

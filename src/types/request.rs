@@ -1,4 +1,4 @@
-use axum::extract::Multipart;
+use axum::extract::{ConnectInfo, Multipart};
 use axum::extract::{FromRequest, Request as HttpRequest};
 use axum::http::header;
 use axum::response::IntoResponse;
@@ -41,7 +41,6 @@ impl ToPyObject for UploadedFile {
         };
         Py::new(py, uploaded_file).unwrap().as_ref(py).into()
     }
-    
 }
 
 #[derive(Debug, Clone)]
@@ -79,10 +78,12 @@ impl ToPyObject for BodyData {
         let json = PyBytes::new(py, &json);
         let files: Vec<Py<PyAny>> = files.into_iter().map(|file| file.to_object(py)).collect();
         let files = PyList::new(py, files);
-        let body = PyBodyData { json: json.into(), files: files.into() };
+        let body = PyBodyData {
+            json: json.into(),
+            files: files.into(),
+        };
         Py::new(py, body).unwrap().as_ref(py).into()
     }
-    
 }
 
 #[derive(Debug, Clone)]
@@ -102,6 +103,11 @@ pub struct Request {
     pub method: String,
     pub path_params: HashMap<String, String>,
     pub body: BodyData,
+
+    pub remote_addr: String,
+    pub timestamp: u32,
+    pub context_id: String,
+
 }
 
 impl ToPyObject for Request {
@@ -117,6 +123,9 @@ impl ToPyObject for Request {
             headers,
             body,
             method: self.method.clone(),
+            remote_addr: self.remote_addr.clone(),
+            timestamp: self.timestamp.clone(),
+            context_id: self.context_id.clone(),
         };
         Py::new(py, request).unwrap().as_ref(py).into()
     }
@@ -135,6 +144,21 @@ impl Request {
                 query_params.set(key.to_string(), value.to_string());
             }
         }
+
+        let remote_addr = request
+            .extensions()
+            .get::<ConnectInfo<std::net::SocketAddr>>()
+            .map(|ConnectInfo(addr)| addr.ip().to_string())
+            .unwrap_or_default();
+
+        // init default current timestamp
+        let timestamp = Some(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as u32,
+        ).unwrap();
+        let context_id = uuid::Uuid::new_v4().to_string();
 
         // parse the header to python header object
         let headers = Header::from_hyper_headers(request.headers());
@@ -228,6 +252,9 @@ impl Request {
             method,
             path_params: HashMap::new(),
             body: body,
+            remote_addr: remote_addr,
+            timestamp,
+            context_id,
         }
     }
 }
@@ -245,6 +272,12 @@ pub struct PyRequest {
     pub body: PyBodyData,
     #[pyo3(get)]
     pub method: String,
+    #[pyo3(get)]
+    pub remote_addr: String,
+    #[pyo3(get)]
+    pub timestamp: u32,
+    #[pyo3(get)]
+    pub context_id: String,
 }
 
 #[pymethods]
@@ -257,6 +290,9 @@ impl PyRequest {
         path_params: Py<PyDict>,
         body: PyBodyData,
         method: String,
+        context_id: String,
+        remote_addr: String,
+        timestamp: u32,
     ) -> Self {
         Self {
             query_params,
@@ -264,6 +300,9 @@ impl PyRequest {
             path_params,
             body,
             method,
+            remote_addr,
+            timestamp,
+            context_id,
         }
     }
 
