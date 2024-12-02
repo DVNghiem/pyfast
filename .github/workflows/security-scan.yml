@@ -74,24 +74,6 @@ jobs:
             safety-results.json
             dependency-check-report.json
             
-      # Send notification on critical issues
-      - name: Notify Security Issues
-        if: failure()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const issueBody = `Security scan failed in ${process.env.GITHUB_WORKFLOW}
-            See detailed results in the workflow artifacts.`;
-            
-            github.rest.issues.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              title: '🚨 Security Scan Failed',
-              body: issueBody,
-              labels: ['security', 'automated-scan']
-            });
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
   dependency-review:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
