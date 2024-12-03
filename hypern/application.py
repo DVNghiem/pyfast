@@ -8,8 +8,7 @@ import orjson
 from typing_extensions import Annotated, Doc
 
 from hypern.datastructures import Contact, HTTPMethod, Info, License
-from hypern.hypern import FunctionInfo, Router
-from hypern.hypern import Route as InternalRoute
+from hypern.hypern import FunctionInfo, Router, Route as InternalRoute, WebsocketRoute, WebsocketRouter
 from hypern.openapi import SchemaGenerator, SwaggerUI
 from hypern.processpool import run_processes
 from hypern.response import HTMLResponse, JSONResponse
@@ -44,6 +43,15 @@ class Hypern:
                 def def_get():
                     return PlainTextResponse("Hello")
                 ```
+                """
+            ),
+        ] = None,
+        websockets: Annotated[
+            List[WebsocketRoute] | None,
+            Doc(
+                """
+                A list of routes to serve incoming WebSocket requests.
+                You can define routes using the `WebsocketRoute` class from `Hypern
                 """
             ),
         ] = None,
@@ -186,6 +194,7 @@ class Hypern:
     ) -> None:
         super().__init__(*args, **kwargs)
         self.router = Router(path="/")
+        self.websocket_router = WebsocketRouter(path="/")
         self.scheduler = scheduler
         self.injectables = default_injectables or {}
         self.middleware_before_request = []
@@ -195,6 +204,9 @@ class Hypern:
 
         for route in routes:
             self.router.extend_route(route(app=self).routes)
+
+        for websocket_route in websockets:
+            self.websocket_router.add_route(websocket_route)
 
         if openapi_url and docs_url:
             self.__add_openapi(
@@ -358,6 +370,7 @@ class Hypern:
             processes=self.args.processes,
             max_blocking_threads=self.args.max_blocking_threads,
             router=self.router,
+            websocket_router=self.websocket_router,
             injectables=self.injectables,
             before_request=self.middleware_before_request,
             after_request=self.middleware_after_request,

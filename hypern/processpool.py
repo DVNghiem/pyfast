@@ -7,7 +7,7 @@ from typing import Any, Dict, List
 from multiprocess import Process
 from watchdog.observers import Observer
 
-from .hypern import FunctionInfo, Router, Server, SocketHeld
+from .hypern import FunctionInfo, Router, Server, SocketHeld, WebsocketRouter
 from .logging import logger
 from .reload import EventHandler
 
@@ -19,6 +19,7 @@ def run_processes(
     processes: int,
     max_blocking_threads: int,
     router: Router,
+    websocket_router: WebsocketRouter,
     injectables: Dict[str, Any],
     before_request: List[FunctionInfo],
     after_request: List[FunctionInfo],
@@ -27,7 +28,9 @@ def run_processes(
 ) -> List[Process]:
     socket = SocketHeld(host, port)
 
-    process_pool = init_processpool(router, socket, workers, processes, max_blocking_threads, injectables, before_request, after_request, response_headers)
+    process_pool = init_processpool(
+        router, websocket_router, socket, workers, processes, max_blocking_threads, injectables, before_request, after_request, response_headers
+    )
 
     def terminating_signal_handler(_sig, _frame):
         logger.info("Terminating server!!")
@@ -67,6 +70,7 @@ def run_processes(
 
 def init_processpool(
     router: Router,
+    websocket_router: WebsocketRouter,
     socket: SocketHeld,
     workers: int,
     processes: int,
@@ -82,7 +86,7 @@ def init_processpool(
         copied_socket = socket.try_clone()
         process = Process(
             target=spawn_process,
-            args=(router, copied_socket, workers, max_blocking_threads, injectables, before_request, after_request, response_headers),
+            args=(router, websocket_router, copied_socket, workers, max_blocking_threads, injectables, before_request, after_request, response_headers),
         )
         process.start()
         process_pool.append(process)
@@ -106,6 +110,7 @@ def initialize_event_loop():
 
 def spawn_process(
     router: Router,
+    websocket_router: WebsocketRouter,
     socket: SocketHeld,
     workers: int,
     max_blocking_threads: int,
@@ -118,6 +123,7 @@ def spawn_process(
 
     server = Server()
     server.set_router(router=router)
+    server.set_websocket_router(websocket_router=websocket_router)
     server.set_injected(injected=injectables)
     server.set_before_hooks(hooks=before_request)
     server.set_after_hooks(hooks=after_request)
