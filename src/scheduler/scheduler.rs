@@ -8,7 +8,7 @@ use std::thread;
 use cron::Schedule;
 use std::str::FromStr;
 
-use crate::utils::get_runtime;
+use crate::runtime::get_runtime;
 use super::retry::RetryPolicy;
 use super::job::{Job, JobType};
 

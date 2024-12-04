@@ -1,9 +1,12 @@
 use crate::{
     executor::{execute_http_function, execute_middleware_function},
     middlewares::base::Middleware,
-    router::{router::Router, ws::WebSocketRouter},
-    socket::SocketHeld,
+    router::router::Router,
     types::{function_info::FunctionInfo, middleware::MiddlewareReturn, request::Request},
+    ws::{
+        router::WebsocketRouter, socket::SocketHeld,
+        websocket::websocket_handler,
+    },
 };
 use pyo3::{exceptions::PyValueError, prelude::*, types::PyDict};
 use std::{
@@ -23,7 +26,7 @@ use std::{
 
 use axum::{
     body::Body,
-    extract::Request as HttpRequest,
+    extract::{Request as HttpRequest, WebSocketUpgrade},
     http::StatusCode,
     response::{IntoResponse, Response as ServerResponse},
     routing::{any, delete, get, head, options, patch, post, put, trace},
@@ -46,7 +49,7 @@ const DEFAULT_MAX_PAYLOAD_SIZE: usize = 1_000_000; // 1Mb
 #[pyclass]
 pub struct Server {
     router: Arc<Mutex<Router>>,
-    websocket_router: Arc<WebSocketRouter>,
+    websocket_router: Arc<WebsocketRouter>,
     startup_handler: Option<Arc<FunctionInfo>>,
     shutdown_handler: Option<Arc<FunctionInfo>>,
     injected: DependencyInjection,
@@ -62,7 +65,7 @@ impl Server {
         let middlewares = Middleware::new().unwrap();
         Self {
             router: Arc::new(Mutex::new(Router::default())),
-            websocket_router: Arc::new(WebSocketRouter::new()),
+            websocket_router: Arc::new(WebsocketRouter::default()),
             startup_handler: None,
             shutdown_handler: None,
             injected: inject,
@@ -73,6 +76,10 @@ impl Server {
 
     pub fn set_router(&mut self, router: Router) {
         self.router = Arc::new(Mutex::new(router));
+    }
+
+    pub fn set_websocket_router(&mut self, websocket_router: WebsocketRouter) {
+        self.websocket_router = Arc::new(websocket_router);
     }
 
     pub fn inject(&mut self, key: &str, value: Py<PyAny>) {
@@ -121,7 +128,7 @@ impl Server {
         let raw_socket = socket.try_borrow_mut()?.get_socket();
 
         let router = self.router.clone();
-        let _web_socket_router = self.websocket_router.clone();
+        let websocket_router = self.websocket_router.clone();
 
         let asyncio = py.import("asyncio")?;
         let event_loop = asyncio.call_method0("new_event_loop")?;
@@ -163,7 +170,7 @@ impl Server {
 
             rt.block_on(async move {
                 let task_locals = task_locals_copy.clone();
-                let mut app = RouterServer::new().with_state(inject_copy.clone());
+                let mut app = RouterServer::new();
 
                 // handle logic for each route with pyo3
                 for route in router.lock().unwrap().iter() {
@@ -196,6 +203,16 @@ impl Server {
                         _ => app.route(&route.path, any(handler)),
                     };
                 }
+
+                // handle logic for each websocket route with pyo3
+                for ws_route in websocket_router.iter() {
+                    let ws_route_copy = ws_route.clone();
+                    let handler = move |ws: WebSocketUpgrade| {
+                        websocket_handler(ws_route_copy.handler.clone(), ws)
+                    };
+                    app = app.route(&ws_route.path, any(handler));
+                }
+
                 app = app.layer(Extension(inject_copy.clone()));
                 app = app.layer(
                     TraceLayer::new_for_http().on_response(

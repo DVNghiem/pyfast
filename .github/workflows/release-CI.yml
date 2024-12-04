@@ -6,13 +6,13 @@ on:
       - v*
 jobs:
   macos:
-    runs-on: macos-12
+    runs-on: macos-13
     strategy:
       matrix:
         python-version: ["3.10", "3.11", "3.12"]
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
       - uses: dtolnay/rust-toolchain@stable
@@ -36,7 +36,7 @@ jobs:
           pip install --force-reinstall dist/*_universal2.whl
           cd ~ && python -c 'import hypern'
       - name: Upload wheels
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: wheels
           path: dist
@@ -47,8 +47,8 @@ jobs:
         python-version: ["3.10", "3.11", "3.12"]
         target: [x64, x86]
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
           architecture: ${{ matrix.target }}
@@ -64,7 +64,7 @@ jobs:
           pip install --force-reinstall dist/*.whl
           cd ~ && python -c 'import hypern'
       - name: Upload wheels
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: wheels
           path: dist
@@ -75,9 +75,9 @@ jobs:
         python-version: ["3.10", "3.11", "3.12"]
         target: [x86_64, i686]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
       - name: Build Wheels
@@ -92,7 +92,7 @@ jobs:
           pip install --force-reinstall dist/*.whl
           cd ~ && python -c 'import hypern'
       - name: Upload wheels
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: wheels
           path: dist
@@ -102,10 +102,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: [macos, windows, linux]
     steps:
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
           name: wheels
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: 3.x
       - name: Publish to PyPi

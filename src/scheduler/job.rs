@@ -59,10 +59,6 @@ impl Job {
         self.job_type.clone()
     }
 
-    pub fn set_job_type(&mut self, job_type: JobType) {
-        self.job_type = job_type;
-    }
-
     pub fn get_task(&self) -> PyObject {
         self.task.clone()
     }
@@ -100,11 +96,6 @@ impl Job {
     pub fn get_timezone(&self) -> Tz {
         self.timezone
     }
-
-    pub fn set_timezone(&mut self, timezone: Tz) {
-        self.timezone = timezone;
-    }
-
 
     pub fn should_run(&self, now: DateTime<Utc>, completed_jobs: &HashSet<String>) -> bool {
         // Check dependencies

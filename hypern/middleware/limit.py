@@ -147,7 +147,7 @@ class ConcurrentRequestMiddleware(Middleware):
         self.lock = Lock()
 
     def get_request_identifier(self, request):
-        return request.ip_addr
+        return request.remote_addr
 
     def before_request(self, request):
         """

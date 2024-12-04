@@ -188,7 +188,7 @@ class Route:
             docs["responses"] = {
                 "200": {
                     "description": "Successful response",
-                    "content": {"application/json": {"schema": response_type.model_json_schema()}},
+                    "content": {"application/json": {"schema": pydantic_to_swagger(response_type).get(response_type.__name__)}},
                 }
             }
 

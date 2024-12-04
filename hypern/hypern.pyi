@@ -183,9 +183,6 @@ class FunctionInfo:
     handler: Callable
     is_async: bool
 
-class SocketHeld:
-    socket: Any
-
 @dataclass
 class Server:
     router: Router
@@ -195,6 +192,7 @@ class Server:
 
     def add_route(self, route: Route) -> None: ...
     def set_router(self, router: Router) -> None: ...
+    def set_websocket_router(self, websocket_router: WebsocketRouter) -> None: ...
     def start(self, socket: SocketHeld, worker: int, max_blocking_threads: int) -> None: ...
     def inject(self, key: str, value: Any) -> None: ...
     def set_injected(self, injected: Dict[str, Any]) -> None: ...
@@ -226,6 +224,34 @@ class Router:
     def get_routes_by_path(self, path: str) -> List[Route]: ...
     def get_routes_by_method(self, method: str) -> List[Route]: ...
     def extend_route(self, routes: List[Route]) -> None: ...
+
+@dataclass
+class SocketHeld:
+    socket: Any
+
+@dataclass
+class WebSocketSession:
+    sender: Callable[[str], None]
+    receiver: Callable[[], str]
+    is_closed: bool
+
+    def send(self, message: str) -> None: ...
+
+@dataclass
+class WebsocketRoute:
+    path: str
+    handler: Callable[[WebSocketSession], None]
+
+@dataclass
+class WebsocketRouter:
+    path: str
+    routes: List[WebsocketRoute]
+
+    def add_route(self, route: WebsocketRoute) -> None: ...
+    def remove_route(self, path: str) -> None: ...
+    def extend_route(self, route: WebsocketRoute) -> None: ...
+    def clear_routes(self) -> None: ...
+    def route_count(self) -> int: ...
 
 @dataclass
 class Header:
@@ -264,3 +290,6 @@ class Request:
     path_params: Dict[str, str]
     body: BodyData
     method: str
+    remote_addr: str
+    timestamp: float
+    context_id: str

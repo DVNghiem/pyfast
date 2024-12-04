@@ -6,11 +6,20 @@ use axum::{
 };
 use pyo3::{
     prelude::*,
-    types::{PyBytes, PyDict},
+    types::{PyBytes, PyDict, PyString},
 };
 
 use super::header::Header;
-use crate::utils::get_description_from_pyobject;
+
+fn get_description_from_pyobject(description: &PyAny) -> PyResult<Vec<u8>> {
+    if let Ok(s) = description.downcast::<PyString>() {
+        Ok(s.to_string().into_bytes())
+    } else if let Ok(b) = description.downcast::<PyBytes>() {
+        Ok(b.as_bytes().to_vec())
+    } else {
+        Ok(vec![])
+    }
+}
 
 #[derive(Debug, Clone, FromPyObject)]
 pub struct Response {
@@ -24,35 +33,6 @@ pub struct Response {
 }
 
 impl Response {
-    pub fn not_found(headers: Option<&Header>) -> Self {
-        let headers = match headers {
-            Some(headers) => headers.clone(),
-            None => Header::new(None),
-        };
-
-        Self {
-            status_code: 404,
-            response_type: "text".to_string(),
-            headers,
-            description: "Not found".to_owned().into_bytes(),
-            file_path: None,
-        }
-    }
-
-    pub fn internal_server_error(headers: Option<&Header>) -> Self {
-        let headers = match headers {
-            Some(headers) => headers.clone(),
-            None => Header::new(None),
-        };
-
-        Self {
-            status_code: 500,
-            response_type: "text".to_string(),
-            headers,
-            description: "Internal server error".to_owned().into_bytes(),
-            file_path: None,
-        }
-    }
 
     pub fn to_axum_response(&self, extra_headers: HashMap<String, String>) -> axum::http::Response<axum::body::Body> {
         let mut headers = HeaderMap::new();

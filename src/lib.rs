@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 
-mod utils;
+mod runtime;
 mod cache;
 mod openapi;
 mod background;
@@ -8,7 +8,7 @@ mod scheduler;
 mod server;
 mod router;
 mod types;
-mod socket;
+mod ws;
 mod executor;
 mod di;
 mod middlewares;
@@ -28,7 +28,6 @@ fn hypern(_py: Python<'_>, m: &PyModule) -> PyResult<()>  {
     m.add_class::<scheduler::scheduler::Scheduler>()?;
     
     m.add_class::<server::Server>()?;
-    m.add_class::<socket::SocketHeld>()?;
     m.add_class::<router::route::Route>()?;
     m.add_class::<router::router::Router>()?;
     m.add_class::<types::http::HttpMethod>()?;
@@ -39,6 +38,11 @@ fn hypern(_py: Python<'_>, m: &PyModule) -> PyResult<()>  {
     m.add_class::<types::request::PyBodyData>()?;
     m.add_class::<types::request::PyUploadedFile>()?;
     m.add_class::<types::query::QueryParams>()?;
+    
+    m.add_class::<ws::socket::SocketHeld>()?;
+    m.add_class::<ws::websocket::WebSocketSession>()?;
+    m.add_class::<ws::route::WebsocketRoute>()?;
+    m.add_class::<ws::router::PyWebsocketRouter>()?;
 
     pyo3::prepare_freethreaded_python();
     Ok(())
