@@ -52,7 +52,7 @@ pub struct Server {
     websocket_router: Arc<WebsocketRouter>,
     startup_handler: Option<Arc<FunctionInfo>>,
     shutdown_handler: Option<Arc<FunctionInfo>>,
-    injected: Arc<DependencyInjection>,
+    injected: DependencyInjection,
     middlewares: Middleware,
     extra_headers: Arc<Mutex<HashMap<String, String>>>,
 }
@@ -68,7 +68,7 @@ impl Server {
             websocket_router: Arc::new(WebsocketRouter::default()),
             startup_handler: None,
             shutdown_handler: None,
-            injected: Arc::new(inject),
+            injected: inject,
             middlewares,
             extra_headers: Arc::new(HashMap::new().into()),
         }
@@ -87,7 +87,7 @@ impl Server {
     }
 
     pub fn set_injected(&mut self, injected: Py<PyDict>) {
-        self.injected = Arc::new(DependencyInjection::from_object(injected));
+        self.injected = DependencyInjection::from_object(injected);
     }
 
     pub fn set_before_hooks(&mut self, hooks: Vec<FunctionInfo>) {
