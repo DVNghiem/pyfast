@@ -8,8 +8,7 @@ import orjson
 from typing_extensions import Annotated, Doc
 
 from hypern.datastructures import Contact, HTTPMethod, Info, License
-from hypern.hypern import FunctionInfo, Router
-from hypern.hypern import Route as InternalRoute
+from hypern.hypern import FunctionInfo, Router, Route as InternalRoute, WebsocketRouter
 from hypern.openapi import SchemaGenerator, SwaggerUI
 from hypern.processpool import run_processes
 from hypern.response import HTMLResponse, JSONResponse
@@ -17,6 +16,7 @@ from hypern.routing import Route
 from hypern.scheduler import Scheduler
 from hypern.middleware import Middleware
 from hypern.args_parser import ArgsConfig
+from hypern.ws import WebsocketRoute
 
 AppType = TypeVar("AppType", bound="Hypern")
 
@@ -44,6 +44,15 @@ class Hypern:
                 def def_get():
                     return PlainTextResponse("Hello")
                 ```
+                """
+            ),
+        ] = None,
+        websockets: Annotated[
+            List[WebsocketRoute] | None,
+            Doc(
+                """
+                A list of routes to serve incoming WebSocket requests.
+                You can define routes using the `WebsocketRoute` class from `Hypern
                 """
             ),
         ] = None,
@@ -186,6 +195,7 @@ class Hypern:
     ) -> None:
         super().__init__(*args, **kwargs)
         self.router = Router(path="/")
+        self.websocket_router = WebsocketRouter(path="/")
         self.scheduler = scheduler
         self.injectables = default_injectables or {}
         self.middleware_before_request = []
@@ -193,8 +203,11 @@ class Hypern:
         self.response_headers = {}
         self.args = ArgsConfig()
 
-        for route in routes:
+        for route in routes or []:
             self.router.extend_route(route(app=self).routes)
+
+        for websocket_route in websockets or []:
+            self.websocket_router.add_route(websocket_route)
 
         if openapi_url and docs_url:
             self.__add_openapi(
@@ -358,6 +371,7 @@ class Hypern:
             processes=self.args.processes,
             max_blocking_threads=self.args.max_blocking_threads,
             router=self.router,
+            websocket_router=self.websocket_router,
             injectables=self.injectables,
             before_request=self.middleware_before_request,
             after_request=self.middleware_after_request,
@@ -379,3 +393,13 @@ class Hypern:
         func_info = FunctionInfo(handler=handler, is_async=is_async)
         route = InternalRoute(path=endpoint, function=func_info, method=method.name)
         self.router.add_route(route=route)
+
+    def add_websocket(self, ws_route: WebsocketRoute):
+        """
+        Adds a WebSocket route to the WebSocket router.
+
+        Args:
+            ws_route (WebsocketRoute): The WebSocket route to be added to the router.
+        """
+        for route in ws_route.routes:
+            self.websocket_router.add_route(route=route)
