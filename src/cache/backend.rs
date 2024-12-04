@@ -1,13 +1,13 @@
 use pyo3::prelude::*;
 
 #[pyclass(subclass)]
-pub struct BaseBackend {}
+pub struct BaseBackend;
 
 #[pymethods]
 impl BaseBackend {
     #[new]
     pub fn new() -> Self {
-        BaseBackend {}
+        Self {}
     }
 
     pub fn get(&self, _key: String) -> PyResult<Option<String>> {

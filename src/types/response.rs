@@ -33,35 +33,6 @@ pub struct Response {
 }
 
 impl Response {
-    pub fn not_found(headers: Option<&Header>) -> Self {
-        let headers = match headers {
-            Some(headers) => headers.clone(),
-            None => Header::new(None),
-        };
-
-        Self {
-            status_code: 404,
-            response_type: "text".to_string(),
-            headers,
-            description: "Not found".to_owned().into_bytes(),
-            file_path: None,
-        }
-    }
-
-    pub fn internal_server_error(headers: Option<&Header>) -> Self {
-        let headers = match headers {
-            Some(headers) => headers.clone(),
-            None => Header::new(None),
-        };
-
-        Self {
-            status_code: 500,
-            response_type: "text".to_string(),
-            headers,
-            description: "Internal server error".to_owned().into_bytes(),
-            file_path: None,
-        }
-    }
 
     pub fn to_axum_response(&self, extra_headers: HashMap<String, String>) -> axum::http::Response<axum::body::Body> {
         let mut headers = HeaderMap::new();

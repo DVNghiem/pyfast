@@ -3,10 +3,42 @@ use pyo3::prelude::*;
 
 use super::route::WebsocketRoute;
 
-/// Contains the thread safe hashmaps of different routes
-#[pyclass]
-#[derive(Debug, Default, FromPyObject)]
+#[derive(Default)]
 pub struct WebsocketRouter {
+    pub path: String,
+    pub routes: Vec<WebsocketRoute>,
+}
+
+impl WebsocketRouter {
+    pub fn iter(&self) -> std::slice::Iter<WebsocketRoute> {
+        self.routes.iter()
+    }
+}
+
+impl ToPyObject for WebsocketRouter {
+    fn to_object(&self, py: Python) -> PyObject {
+        let router = PyWebsocketRouter {
+            path: self.path.to_string(),
+            routes: self.routes.clone(),
+        };
+        Py::new(py, router).unwrap().as_ref(py).into()
+    }
+}
+
+impl FromPyObject<'_> for WebsocketRouter {
+    fn extract(ob: &PyAny) -> PyResult<Self> {
+        let router = ob.extract::<PyWebsocketRouter>()?;
+        Ok(Self {
+            path: router.path,
+            routes: router.routes,
+        })
+    }
+}
+
+/// Contains the thread safe hashmaps of different routes
+#[pyclass(name = "WebsocketRouter")]
+#[derive(Debug, Default, FromPyObject)]
+pub struct PyWebsocketRouter {
     #[pyo3(get, set)]
     path: String,
 
@@ -15,13 +47,18 @@ pub struct WebsocketRouter {
 }
 
 #[pymethods]
-impl WebsocketRouter {
+impl PyWebsocketRouter {
     #[new]
     fn new(path: &str) -> Self {
         Self {
             path: path.to_string(),
             routes: Vec::new(),
         }
+    }
+
+    // Helper method to check for duplicate routes
+    fn has_duplicate_route(&self, new_route: &WebsocketRoute) -> bool {
+        self.routes.iter().any(|r| r.path == new_route.path)
     }
 
     /// Add a new route to the router
@@ -58,11 +95,7 @@ impl WebsocketRouter {
 
     /// Remove a route by path and method
     pub fn remove_route(&mut self, path: &str) -> PyResult<bool> {
-        if let Some(index) = self
-            .routes
-            .iter()
-            .position(|r| r.path == path)
-        {
+        if let Some(index) = self.routes.iter().position(|r| r.path == path) {
             self.routes.remove(index);
             Ok(true)
         } else {
@@ -80,7 +113,6 @@ impl WebsocketRouter {
             .collect()
     }
 
-
     /// Clear all routes
     pub fn clear_routes(&mut self) {
         self.routes.clear();
@@ -95,7 +127,6 @@ impl WebsocketRouter {
     pub fn is_empty(&self) -> bool {
         self.routes.is_empty()
     }
-
 
     /// Update base path for router
     pub fn update_base_path(&mut self, new_path: &str) -> PyResult<()> {
@@ -126,19 +157,5 @@ impl WebsocketRouter {
             self.path,
             self.routes.len()
         ))
-    }
-
-}
-
-impl WebsocketRouter {
-    pub fn iter(&self) -> std::slice::Iter<WebsocketRoute> {
-        self.routes.iter()
-    }
-
-    // Helper method to check for duplicate routes
-    fn has_duplicate_route(&self, new_route: &WebsocketRoute) -> bool {
-        self.routes.iter().any(|r| {
-            r.path == new_route.path
-        })
     }
 }

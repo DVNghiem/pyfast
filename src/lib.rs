@@ -42,7 +42,7 @@ fn hypern(_py: Python<'_>, m: &PyModule) -> PyResult<()>  {
     m.add_class::<ws::socket::SocketHeld>()?;
     m.add_class::<ws::websocket::WebSocketSession>()?;
     m.add_class::<ws::route::WebsocketRoute>()?;
-    m.add_class::<ws::router::WebsocketRouter>()?;
+    m.add_class::<ws::router::PyWebsocketRouter>()?;
 
     pyo3::prepare_freethreaded_python();
     Ok(())
