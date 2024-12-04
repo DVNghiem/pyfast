@@ -5,6 +5,7 @@ on:
     branches: [ main, stag ]
   pull_request:
     branches: [ main, stag ]
+  workflow_dispatch:
 
 jobs:
   security-scan:

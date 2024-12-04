@@ -18,6 +18,8 @@ on:
     branches: [ "stag", "main" ]
   schedule:
     - cron: '18 9 * * 6'
+  workflow_dispatch:
+  
 
 jobs:
   analyze:

@@ -12,6 +12,7 @@ on:
     branches:
       - stag
       - main
+  workflow_dispatch:
 
 jobs:
   macos:
