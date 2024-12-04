@@ -9,7 +9,7 @@ use axum::{
 };
 use pyo3::{
     prelude::*,
-    types::PyDict,
+    types::{PyDict, PyTuple},
 };
 use tokio::sync::{mpsc, Mutex};
 
@@ -106,17 +106,14 @@ async fn handle_socket(python_handler: PyObject, socket: WebSocket) {
     let is_closed_clone = is_closed.clone();
 
     let socket = Arc::new(Mutex::new(socket));
-
     let socket_send = socket.clone();
 
-    // flow send message to socket
+    // Send message handler
     tokio::spawn(async move {
         while let Some(msg) = rx_send.recv().await {
             let mut socket = socket_send.lock().await;
             let send_result = match msg {
-                WebSocketMessage::Text(text) => {
-                    socket.send(Message::Text(text)).await
-                },
+                WebSocketMessage::Text(text) => socket.send(Message::Text(text)).await,
                 WebSocketMessage::Binary(bytes) => socket.send(Message::Binary(bytes)).await,
                 WebSocketMessage::Close => {
                     println!("Closing connection");
@@ -130,25 +127,62 @@ async fn handle_socket(python_handler: PyObject, socket: WebSocket) {
         }
     });
 
-    // receive message from socket
-
+    // Receive message handler
     let socket_recv = socket.clone();
     tokio::spawn(async move {
         let mut socket = socket_recv.lock().await;
 
         while let Some(msg) = socket.recv().await {
-
             match msg {
                 Ok(Message::Text(text)) => {
-                    Python::with_gil(|py| {
+                    let handler_result = Python::with_gil(|py| -> PyResult<PyObject> {
                         let session = WebSocketSession::from_sender(tx_send.clone());
+                        
+                        // Check if the handler is a coroutine function
+                        let inspect = py.import("inspect")?;
+                        let is_coroutine = inspect
+                            .call_method1("iscoroutinefunction", (python_handler.as_ref(py),))?
+                            .is_true()?;
+
                         let kwargs = PyDict::new(py);
-                        kwargs.set_item("message", text.clone()).unwrap();
-                        let _ = python_handler.call(py, (session, ), Some(kwargs));
+                        kwargs.set_item("message", text.clone())?;
+
+                        let args = PyTuple::new(py, &[PyCell::new(py, session)?]);
+                        
+                        if is_coroutine {
+                            // Handle async function
+                            let asyncio = py.import("asyncio")?;
+                            let coro = python_handler.call(py, args, Some(kwargs))?;
+                            
+                            // Create a new event loop in the current thread
+                            let loop_obj = asyncio.call_method0("new_event_loop")?;
+                            
+                            // Run the coroutine and get result
+                            let result = loop_obj.call_method1("run_until_complete", (coro,))?;
+                            
+                            // Close the loop
+                            loop_obj.call_method0("close")?;
+                            
+                            Ok(result.into())
+                        } else {
+                            // Handle sync function
+                            let result = python_handler.call(py, args, Some(kwargs))?;
+                            Ok(result)
+                        }
                     });
 
-                    if tx_recv.send(WebSocketMessage::Text(text)).await.is_err() {
-                        break;
+                    match handler_result {
+                        Ok(_) => {
+                            if tx_recv.send(WebSocketMessage::Text(text)).await.is_err() {
+                                break;
+                            }
+                        }
+                        Err(e) => {
+                            let error_msg = format!("{{\"error\": \"{}\"}}", e.to_string());
+                            if tx_send.send(WebSocketMessage::Text(error_msg)).await.is_err() {
+                                break;
+                            }
+                        }
                     }
                 }
                 Ok(Message::Binary(bytes)) => {
@@ -162,7 +196,7 @@ async fn handle_socket(python_handler: PyObject, socket: WebSocket) {
                     }
                 }
                 Ok(Message::Pong(_)) => {
-                    // Handle pong message if necessary
+                    // Handle pong messages if needed
                 }
                 Ok(Message::Close(_)) | Err(_) => {
                     let mut closed = is_closed_clone.lock().await;
