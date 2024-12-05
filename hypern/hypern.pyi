@@ -16,6 +16,9 @@ class RedisBackend(BaseBackend):
     get: Callable[[str], Any]
     set: Callable[[Any, str, int], None]
     delete_startswith: Callable[[str], None]
+    set_nx: Callable[[Any, str, int], None]
+    get_ttl: Callable[[str], int]
+    current_timestamp: Callable[[], int]
 
 @dataclass
 class BaseSchemaGenerator:
