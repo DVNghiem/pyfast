@@ -101,6 +101,13 @@ impl Header {
         }
     }
 
+    pub fn update(&mut self, headers: Py<PyDict>) {
+        Python::with_gil(|py| {
+            let headers = headers.as_ref(py);
+            self.populate_from_dict(headers);
+        });
+    }
+
     pub fn is_empty(&self) -> bool {
         self.headers.is_empty()
     }
