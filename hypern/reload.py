@@ -25,7 +25,7 @@ class EventHandler(FileSystemEventHandler):
                 if all(str(arg) in proc for arg in current_cmd):
                     pid = int(proc.split()[1])
                     try:
-                        os.kill(pid, signal.SIGKILL)
+                        os.kill(pid, signal.SIGKILL)  # NOSONAR
                         logger.debug(f"Killed process with PID {pid}")
                     except ProcessLookupError:
                         pass
