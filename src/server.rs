@@ -1,12 +1,9 @@
 use crate::{
-    executor::{execute_http_function, execute_middleware_function},
+    executor::{execute_http_function, execute_middleware_function, execute_startup_handler},
     middlewares::base::Middleware,
     router::router::Router,
     types::{function_info::FunctionInfo, middleware::MiddlewareReturn, request::Request},
-    ws::{
-        router::WebsocketRouter, socket::SocketHeld,
-        websocket::websocket_handler,
-    },
+    ws::{router::WebsocketRouter, socket::SocketHeld, websocket::websocket_handler},
 };
 use pyo3::{exceptions::PyValueError, prelude::*, types::PyDict};
 use std::{
@@ -103,6 +100,14 @@ impl Server {
         *extra_headers = headers;
     }
 
+    pub fn set_startup_handler(&mut self, handler: FunctionInfo) {
+        self.startup_handler = Some(Arc::new(handler));
+    }
+
+    pub fn set_shutdown_handler(&mut self, handler: FunctionInfo) {
+        self.shutdown_handler = Some(Arc::new(handler));
+    }
+
     pub fn start(
         &mut self,
         py: Python,
@@ -134,7 +139,7 @@ impl Server {
         let event_loop = asyncio.call_method0("new_event_loop")?;
         asyncio.call_method1("set_event_loop", (event_loop,))?;
 
-        let _startup_handler = self.startup_handler.clone();
+        let startup_handler = self.startup_handler.clone();
         let shutdown_handler = self.shutdown_handler.clone();
 
         let task_locals = pyo3_asyncio::TaskLocals::new(event_loop).copy_context(py)?;
@@ -169,6 +174,9 @@ impl Server {
             debug!("Waiting for process to start...");
 
             rt.block_on(async move {
+                let task_locals_copy = task_locals_copy.clone();
+                let _ = execute_startup_handler(startup_handler, &task_locals_copy).await;
+
                 let task_locals = task_locals_copy.clone();
                 let mut app = RouterServer::new();
 
@@ -230,8 +238,6 @@ impl Server {
 
         let event_loop = (*event_loop).call_method0("run_forever");
         if event_loop.is_err() {
-            // debug!("Ctrl c handler");
-
             if let Some(function) = shutdown_handler {
                 if function.is_async {
                     pyo3_asyncio::tokio::run_until_complete(

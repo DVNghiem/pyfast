@@ -25,11 +25,24 @@ def run_processes(
     after_request: List[FunctionInfo],
     response_headers: Dict[str, str],
     reload: bool = True,
+    on_startup: FunctionInfo | None = None,
+    on_shutdown: FunctionInfo | None = None,
 ) -> List[Process]:
     socket = SocketHeld(host, port)
 
     process_pool = init_processpool(
-        router, websocket_router, socket, workers, processes, max_blocking_threads, injectables, before_request, after_request, response_headers
+        router,
+        websocket_router,
+        socket,
+        workers,
+        processes,
+        max_blocking_threads,
+        injectables,
+        before_request,
+        after_request,
+        response_headers,
+        on_startup,
+        on_shutdown,
     )
 
     def terminating_signal_handler(_sig, _frame):
@@ -79,6 +92,8 @@ def init_processpool(
     before_request: List[FunctionInfo],
     after_request: List[FunctionInfo],
     response_headers: Dict[str, str],
+    on_startup: FunctionInfo | None = None,
+    on_shutdown: FunctionInfo | None = None,
 ) -> List[Process]:
     process_pool = []
 
@@ -86,7 +101,19 @@ def init_processpool(
         copied_socket = socket.try_clone()
         process = Process(
             target=spawn_process,
-            args=(router, websocket_router, copied_socket, workers, max_blocking_threads, injectables, before_request, after_request, response_headers),
+            args=(
+                router,
+                websocket_router,
+                copied_socket,
+                workers,
+                max_blocking_threads,
+                injectables,
+                before_request,
+                after_request,
+                response_headers,
+                on_startup,
+                on_shutdown,
+            ),
         )
         process.start()
         process_pool.append(process)
@@ -118,6 +145,8 @@ def spawn_process(
     before_request: List[FunctionInfo],
     after_request: List[FunctionInfo],
     response_headers: Dict[str, str],
+    on_startup: FunctionInfo | None = None,
+    on_shutdown: FunctionInfo | None = None,
 ):
     loop = initialize_event_loop()
 
@@ -129,6 +158,10 @@ def spawn_process(
     server.set_after_hooks(hooks=after_request)
     server.set_response_headers(headers=response_headers)
 
+    if on_startup:
+        server.set_startup_handler(on_startup)
+    if on_shutdown:
+        server.set_shutdown_handler(on_shutdown)
     try:
         server.start(socket, workers, max_blocking_threads)
         loop = asyncio.get_event_loop()
