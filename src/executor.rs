@@ -1,6 +1,9 @@
+use std::sync::Arc;
+
 use pyo3::{prelude::*, types::PyDict};
 
 use anyhow::Result;
+use pyo3_asyncio::TaskLocals;
 use crate::{
     di::DependencyInjection,
     types::{function_info::FunctionInfo, middleware::MiddlewareReturn, request::Request, response::Response},
@@ -85,4 +88,25 @@ where
             }
         })
     }
+}
+
+
+pub async fn execute_startup_handler(
+    event_handler: Option<Arc<FunctionInfo>>,
+    task_locals: &TaskLocals,
+) -> Result<()> {
+    if let Some(function) = event_handler {
+        if function.is_async {
+            Python::with_gil(|py| {
+                pyo3_asyncio::into_future_with_locals(
+                    task_locals,
+                    function.handler.as_ref(py).call0()?,
+                )
+            })?
+            .await?;
+        } else {
+            Python::with_gil(|py| function.handler.call0(py))?;
+        }
+    }
+    Ok(())
 }
