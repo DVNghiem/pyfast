@@ -60,7 +60,7 @@ class EdgeCacheMiddleware(Middleware):
     - CDN-specific headers
     """
 
-    def __init__(self, config: CacheConfig = None):
+    def __init__(self, config: CacheConfig | None = None):
         super().__init__()
         self.config = config or CacheConfig()
         self._etag_cache: Dict[str, str] = {}
@@ -83,7 +83,7 @@ class EdgeCacheMiddleware(Middleware):
             components.append(str(request.query_params))
 
         for header in self.config.cache_by_headers:
-            value = request.headers.get(header)
+            value = request.headers.get(str(header).lower())
             if value:
                 components.append(f"{header}:{value}")
 
@@ -160,7 +160,7 @@ class EdgeCacheMiddleware(Middleware):
         )
 
         # Add CDN-specific headers
-        response.headers["CDN-Cache-Control"] = response.headers["Cache-Control"]
-        response.headers["Surrogate-Control"] = f"max-age={self.config.s_maxage or self.config.max_age}"
+        response.headers.set("CDN-Cache-Control", response.headers["Cache-Control"])
+        response.headers.set("Surrogate-Control", f"max-age={self.config.s_maxage or self.config.max_age}")
 
         return response

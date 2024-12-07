@@ -315,6 +315,9 @@ async fn execute_request(
         .await
         .unwrap();
 
+    // mapping context id
+    response.context_id = request.context_id;
+
     // mapping neaded header request to response
     response.headers.set(
         "accept-encoding".to_string(),

@@ -273,6 +273,7 @@ class Response:
     headers: Header
     description: str
     file_path: str | None
+    context_id: str
 
 @dataclass
 class QueryParams:
