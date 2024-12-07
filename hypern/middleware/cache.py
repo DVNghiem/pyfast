@@ -1,0 +1,166 @@
+from typing import Dict, List, Optional
+from datetime import datetime
+import hashlib
+from .base import Middleware
+from hypern.hypern import Request, Response, Header
+
+
+class CacheConfig:
+    """
+    Configuration class for caching middleware.
+
+    Attributes:
+        max_age (int): The maximum age (in seconds) for the cache. Default is 3600 seconds (1 hour).
+        s_maxage (Optional[int]): The shared maximum age (in seconds) for the cache. Default is None.
+        stale_while_revalidate (Optional[int]): The time (in seconds) the cache can be used while revalidation is performed. Default is None.
+        stale_if_error (Optional[int]): The time (in seconds) the cache can be used if an error occurs during revalidation. Default is None.
+        vary_by (List[str]): List of headers to vary the cache by. Default is ['Accept', 'Accept-Encoding'].
+        cache_control (List[str]): List of cache control directives. Default is an empty list.
+        include_query_string (bool): Whether to include the query string in the cache key. Default is True.
+        exclude_paths (List[str]): List of paths to exclude from caching. Default is ['/admin', '/api/private'].
+        exclude_methods (List[str]): List of HTTP methods to exclude from caching. Default is ['POST', 'PUT', 'DELETE', 'PATCH'].
+        private_paths (List[str]): List of paths to be marked as private. Default is an empty list.
+        cache_by_headers (List[str]): List of headers to include in the cache key. Default is an empty list.
+    """
+
+    def __init__(
+        self,
+        max_age: int = 3600,  # 1 hour default
+        s_maxage: Optional[int] = None,
+        stale_while_revalidate: Optional[int] = None,
+        stale_if_error: Optional[int] = None,
+        vary_by: List[str] = None,
+        cache_control: List[str] = None,
+        include_query_string: bool = True,
+        exclude_paths: List[str] = None,
+        exclude_methods: List[str] = None,
+        private_paths: List[str] = None,
+        cache_by_headers: List[str] = None,
+    ):
+        self.max_age = max_age
+        self.s_maxage = s_maxage
+        self.stale_while_revalidate = stale_while_revalidate
+        self.stale_if_error = stale_if_error
+        self.vary_by = vary_by or ["accept", "accept-encoding"]
+        self.cache_control = cache_control or []
+        self.include_query_string = include_query_string
+        self.exclude_paths = exclude_paths or ["/admin", "/api/private"]
+        self.exclude_methods = exclude_methods or ["POST", "PUT", "DELETE", "PATCH"]
+        self.private_paths = private_paths or []
+        self.cache_by_headers = cache_by_headers or []
+
+
+class EdgeCacheMiddleware(Middleware):
+    """
+    Middleware implementing edge caching strategies with support for:
+    - Cache-Control directives
+    - ETag generation
+    - Conditional requests (If-None-Match, If-Modified-Since)
+    - Vary header management
+    - CDN-specific headers
+    """
+
+    def __init__(self, config: CacheConfig = None):
+        super().__init__()
+        self.config = config or CacheConfig()
+        self._etag_cache: Dict[str, str] = {}
+
+    def _should_cache(self, request: Request, path: str) -> bool:
+        """Determine if the request should be cached"""
+        if request.method in self.config.exclude_methods:
+            return False
+
+        if any(excluded in path for excluded in self.config.exclude_paths):
+            return False
+
+        return True
+
+    def _generate_cache_key(self, request: Request) -> str:
+        """Generate a unique cache key based on request attributes"""
+        components = [request.method, request.path]
+
+        if self.config.include_query_string:
+            components.append(str(request.query_params))
+
+        for header in self.config.cache_by_headers:
+            value = request.headers.get(header)
+            if value:
+                components.append(f"{header}:{value}")
+
+        return hashlib.sha256(":".join(components).encode()).hexdigest()
+
+    def _generate_etag(self, response: Response) -> str:
+        """Generate ETag for response content"""
+        content = response.description
+        if not isinstance(content, bytes):
+            content = str(content).encode()
+        return hashlib.sha256(content).hexdigest()
+
+    def _build_cache_control(self, path: str) -> str:
+        """Build Cache-Control header value"""
+        directives = []
+
+        # Determine public/private caching
+        if any(private in path for private in self.config.private_paths):
+            directives.append("private")
+        else:
+            directives.append("public")
+
+        # Add max-age directives
+        directives.append(f"max-age={self.config.max_age}")
+
+        if self.config.s_maxage is not None:
+            directives.append(f"s-maxage={self.config.s_maxage}")
+
+        if self.config.stale_while_revalidate is not None:
+            directives.append(f"stale-while-revalidate={self.config.stale_while_revalidate}")
+
+        if self.config.stale_if_error is not None:
+            directives.append(f"stale-if-error={self.config.stale_if_error}")
+
+        # Add custom cache control directives
+        directives.extend(self.config.cache_control)
+
+        return ", ".join(directives)
+
+    def before_request(self, request: Request) -> Request | Response:
+        """Handle conditional requests"""
+        if not self._should_cache(request, request.path):
+            return request
+
+        cache_key = self._generate_cache_key(request)
+        etag = self._etag_cache.get(cache_key)
+
+        if etag:
+            if_none_match = request.headers.get("if-none-match")
+            if if_none_match and if_none_match == etag:
+                return Response(status_code=304, description=b"", headers=Header({"ETag": etag}))
+
+        return request
+
+    def after_request(self, response: Response) -> Response:
+        """Add caching headers to response"""
+        if not self._should_cache(self.app.request, self.app.request.path):
+            response.headers.set("Cache-Control", "no-store")
+            return response
+
+        # Generate and store ETag
+        cache_key = self._generate_cache_key(self.app.request)
+        etag = self._generate_etag(response)
+        self._etag_cache[cache_key] = etag
+
+        # Set cache headers
+        response.headers.update(
+            {
+                "Cache-Control": self._build_cache_control(self.app.request.path),
+                "ETag": etag,
+                "Vary": ", ".join(self.config.vary_by),
+                "Last-Modified": datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S GMT"),
+            }
+        )
+
+        # Add CDN-specific headers
+        response.headers["CDN-Cache-Control"] = response.headers["Cache-Control"]
+        response.headers["Surrogate-Control"] = f"max-age={self.config.s_maxage or self.config.max_age}"
+
+        return response

@@ -270,7 +270,7 @@ class Response:
     response_type: str
     headers: Header
     description: str
-    file_path: str
+    file_path: str | None
 
 @dataclass
 class QueryParams:

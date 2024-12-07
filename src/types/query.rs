@@ -69,8 +69,12 @@ impl QueryParams {
         self.queries.contains_key(&key)
     }
 
-    pub fn __repr__(&self) -> String {
+    pub fn __str__(&self) -> String {
         format!("{:?}", self.queries)
+    }
+
+    pub fn __repr__(&self) -> String {
+        self.__str__() 
     }
 }
 
