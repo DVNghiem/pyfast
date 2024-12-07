@@ -1,98 +1,165 @@
-from typing import Any, Optional, Callable, TypeVar
-from datetime import datetime
 import asyncio
-import orjson
+import time
+from abc import ABC, abstractmethod
+from typing import Callable, Generic, Optional, TypeVar
 
-from hypern.logging import logger
+import orjson
 
 T = TypeVar("T")
 
 
-class CacheEntry:
-    def __init__(self, value: Any, expires_at: int, stale_at: Optional[int] = None):
+class CacheStrategy(ABC, Generic[T]):
+    """Base class for cache strategies"""
+
+    @abstractmethod
+    async def get(self, key: str) -> Optional[T]:
+        pass
+
+    @abstractmethod
+    async def set(self, key: str, value: T, ttl: Optional[int] = None) -> None:
+        pass
+
+    @abstractmethod
+    async def delete(self, key: str) -> None:
+        pass
+
+
+class CacheEntry(Generic[T]):
+    """Represents a cached item with metadata"""
+
+    def __init__(self, value: T, created_at: float, ttl: int, revalidate_after: Optional[int] = None):
         self.value = value
-        self.expires_at = expires_at
-        self.stale_at = stale_at or expires_at
+        self.created_at = created_at
+        self.ttl = ttl
+        self.revalidate_after = revalidate_after
         self.is_revalidating = False
 
-    def to_json(self) -> str:
-        return orjson.dumps({"value": self.value, "expires_at": self.expires_at, "stale_at": self.stale_at, "is_revalidating": self.is_revalidating})
+    def is_stale(self) -> bool:
+        """Check if entry is stale and needs revalidation"""
+        now = time.time()
+        return self.revalidate_after is not None and now > (self.created_at + self.revalidate_after)
+
+    def is_expired(self) -> bool:
+        """Check if entry has completely expired"""
+        now = time.time()
+        return now > (self.created_at + self.ttl)
+
+    def to_json(self) -> bytes:
+        """Serialize entry to JSON"""
+        return orjson.dumps(
+            {
+                "value": self.value,
+                "created_at": self.created_at,
+                "ttl": self.ttl,
+                "revalidate_after": self.revalidate_after,
+                "is_revalidating": self.is_revalidating,
+            }
+        )
 
     @classmethod
-    def from_json(cls, data: str) -> "CacheEntry":
-        data_dict = orjson.loads(data)
-        entry = cls(value=data_dict["value"], expires_at=data_dict["expires_at"], stale_at=data_dict["stale_at"])
-        entry.is_revalidating = data_dict["is_revalidating"]
-        return entry
+    def from_json(cls, data: bytes) -> "CacheEntry[T]":
+        """Deserialize entry from JSON"""
+        parsed = orjson.loads(data)
+        return cls(value=parsed["value"], created_at=parsed["created_at"], ttl=parsed["ttl"], revalidate_after=parsed["revalidate_after"])
 
 
-class CacheStrategy:
-    def __init__(self, backend: Any):
+class StaleWhileRevalidateStrategy(CacheStrategy[T]):
+    """
+    Implements stale-while-revalidate caching strategy.
+    Allows serving stale content while revalidating in the background.
+    """
+
+    def __init__(self, backend: CacheStrategy[T], revalidate_after: int, ttl: int, revalidate_fn: Callable[..., T]):
         self.backend = backend
-
-    async def get(self, key: str, loader: Callable[[], T]) -> T:
-        raise NotImplementedError
-
-
-class StaleWhileRevalidateStrategy(CacheStrategy):
-    def __init__(self, backend: Any, stale_ttl: int, cache_ttl: int):
-        super().__init__(backend)
-        self.stale_ttl = stale_ttl
-        self.cache_ttl = cache_ttl
-
-    async def get(self, key: str, loader: Callable[[], T]) -> T:
-        now = int(datetime.now().timestamp())
-
-        # Try to get from cache
-        cached_data = await self.backend.get(key)
-        if cached_data:
-            entry = CacheEntry.from_json(cached_data)
-
-            if now < entry.stale_at:
-                # Cache is fresh
-                return entry.value
-
-            if now < entry.expires_at and not entry.is_revalidating:
-                # Cache is stale but usable - trigger background revalidation
-                entry.is_revalidating = True
-                await self.backend.set(key, entry.to_json(), self.cache_ttl)
-                asyncio.create_task(self._revalidate(key, loader))
-                return entry.value
-
-        # Cache miss or expired - load fresh data
-        value = await loader()
-        entry = CacheEntry(value=value, expires_at=now + self.cache_ttl, stale_at=now + (self.cache_ttl - self.stale_ttl))
-        await self.backend.set(key, entry.to_json(), self.cache_ttl)
-        return value
-
-    async def _revalidate(self, key: str, loader: Callable[[], T]):
-        try:
-            value = await loader()
-            now = int(datetime.now().timestamp())
-            entry = CacheEntry(value=value, expires_at=now + self.cache_ttl, stale_at=now + (self.cache_ttl - self.stale_ttl))
-            await self.backend.set(key, entry.to_json(), self.cache_ttl)
-        except Exception as e:
-            logger.error(f"Revalidation failed for key {key}: {e}")
-
-
-class CacheAsideStrategy(CacheStrategy):
-    def __init__(self, backend: Any, ttl: int):
-        super().__init__(backend)
+        self.revalidate_after = revalidate_after
         self.ttl = ttl
+        self.revalidate_fn = revalidate_fn
+        self._revalidation_locks: dict = {}
 
-    async def get(self, key: str, loader: Callable[[], T]) -> T:
-        # Try to get from cache
-        cached_data = await self.backend.get(key)
-        if cached_data:
-            entry = CacheEntry.from_json(cached_data)
-            if entry.expires_at > int(datetime.now().timestamp()):
-                return entry.value
+    async def get(self, key: str) -> Optional[T]:
+        entry = await self.backend.get(key)
+        if not entry:
+            return None
 
-        # Cache miss or expired - load from source
-        value = await loader()
-        entry = CacheEntry(value=value, expires_at=int(datetime.now().timestamp()) + self.ttl)
-        await self.backend.set(key, entry.to_json(), self.ttl)
+        if isinstance(entry, bytes):
+            entry = CacheEntry.from_json(entry)
+
+        # If entry is stale but not expired, trigger background revalidation
+        if entry.is_stale() and not entry.is_expired():
+            if not entry.is_revalidating:
+                entry.is_revalidating = True
+                await self.backend.set(key, entry.to_json())
+                asyncio.create_task(self._revalidate(key))
+            return entry.value
+
+        # If entry is expired, return None
+        if entry.is_expired():
+            return None
+
+        return entry.value
+
+    async def set(self, key: str, value: T, ttl: Optional[int] = None) -> None:
+        entry = CacheEntry(value=value, created_at=time.time(), ttl=ttl or self.ttl, revalidate_after=self.revalidate_after)
+        await self.backend.set(key, entry.to_json())
+
+    async def delete(self, key: str) -> None:
+        await self.backend.delete(key)
+
+    async def _revalidate(self, key: str) -> None:
+        """Background revalidation of cached data"""
+        try:
+            # Prevent multiple simultaneous revalidations
+            if key in self._revalidation_locks:
+                return
+            self._revalidation_locks[key] = True
+
+            # Get fresh data
+            fresh_value = await self.revalidate_fn(key)
+
+            # Update cache with fresh data
+            await self.set(key, fresh_value)
+        finally:
+            self._revalidation_locks.pop(key, None)
+
+
+class CacheAsideStrategy(CacheStrategy[T]):
+    """
+    Implements cache-aside (lazy loading) strategy.
+    Data is loaded into cache only when requested.
+    """
+
+    def __init__(self, backend: CacheStrategy[T], load_fn: Callable[[str], T], ttl: int, write_through: bool = False):
+        self.backend = backend
+        self.load_fn = load_fn
+        self.ttl = ttl
+        self.write_through = write_through
+
+    async def get(self, key: str) -> Optional[T]:
+        # Try to get from cache first
+        value = await self.backend.get(key)
+        if value:
+            return value if isinstance(value, bytes) else value
+
+        # On cache miss, load from source
+        value = await self.load_fn(key)
+        if value is not None:
+            await self.set(key, value)
         return value
+
+    async def set(self, key: str, value: T, ttl: Optional[int] = None) -> None:
+        await self.backend.set(key, value, ttl or self.ttl)
+
+        # If write-through is enabled, update the source
+        if self.write_through:
+            await self._write_to_source(key, value)
+
+    async def delete(self, key: str) -> None:
+        await self.backend.delete(key)
+
+    async def _write_to_source(self, key: str, value: T) -> None:
+        """Write to the source in write-through mode"""
+        if hasattr(self.load_fn, "write"):
+            await self.load_fn.write(key, value)
 
 
 def cache_with_strategy(strategy: CacheStrategy, key_prefix: str = None):
