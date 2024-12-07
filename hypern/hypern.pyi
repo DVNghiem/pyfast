@@ -264,6 +264,7 @@ class Header:
     def set(self, key: str, value: str) -> None: ...
     def append(self, key: str, value: str) -> None: ...
     def update(self, headers: Dict[str, str]) -> None: ...
+    def get_headers(self) -> Dict[str, str]: ...
 
 @dataclass
 class Response:
@@ -276,6 +277,8 @@ class Response:
 @dataclass
 class QueryParams:
     queries: Dict[str, List[str]]
+
+    def to_dict(self) -> Dict[str, str]: ...
 
 @dataclass
 class UploadedFile:
@@ -293,6 +296,7 @@ class BodyData:
 
 @dataclass
 class Request:
+    path: str
     query_params: QueryParams
     headers: Header
     path_params: Dict[str, str]
@@ -301,3 +305,6 @@ class Request:
     remote_addr: str
     timestamp: float
     context_id: str
+
+    def json(self) -> Dict[str, Any]: ...
+    def set_body(self, body: BodyData) -> None: ...

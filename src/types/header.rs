@@ -46,6 +46,7 @@ impl Header {
             let key = PyString::new(py, key);
             let value = PyString::new(py, value);
             dict.set_item(key, value).unwrap();
+
         }
         dict.into()
     }
