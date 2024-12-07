@@ -76,7 +76,7 @@ impl Header {
         let dict = PyDict::new(py);
         for iter in self.headers.iter() {
             let (key, values) = iter.pair();
-            let py_values = PyList::new(py, values.iter().map(|value| value.to_object(py)));
+            let py_values = values.join(", ").to_object(py);
             dict.set_item(key, py_values).unwrap();
         }
         dict.into()
