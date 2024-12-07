@@ -38,7 +38,7 @@ impl Response {
         let mut headers = HeaderMap::new();
         for (key, value) in self.headers.headers.clone() {
             let header_name = HeaderName::from_bytes(key.as_bytes()).unwrap();
-            headers.insert(header_name, value.join(" ").parse().unwrap());
+            headers.insert(header_name, value.parse().unwrap());
         }
 
         // Add extra headers
@@ -137,10 +137,12 @@ impl PyResponse {
     }
 
     pub fn set_cookie(&mut self, py: Python, key: &str, value: &str) -> PyResult<()> {
-        self.headers
-            .try_borrow_mut(py)
-            .expect("value already borrowed")
-            .append(key.to_string(), value.to_string());
+        let headers = self.headers.as_ref(py).to_object(py);
+        let key = PyString::new(py, key);
+        let value = PyString::new(py, value);
+        let headers_dict: &PyDict = headers.downcast::<PyDict>(py)?;
+        headers_dict.set_item(key, value)?;
+        self.headers = headers.extract(py)?;
         Ok(())
     }
 }

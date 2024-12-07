@@ -20,6 +20,7 @@ use std::{
     process::exit,
     sync::{atomic::AtomicBool, Arc},
 };
+use tower::ServiceBuilder;
 
 use axum::{
     body::Body,
@@ -30,14 +31,14 @@ use axum::{
     Extension, Router as RouterServer,
 };
 
+use crate::di::DependencyInjection;
 use tower_http::{
     trace::{DefaultOnResponse, TraceLayer},
     LatencyUnit,
+    {compression::CompressionLayer, decompression::RequestDecompressionLayer},
 };
 use tracing::{debug, Level};
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt};
-
-use crate::di::DependencyInjection;
 
 static STARTED: AtomicBool = AtomicBool::new(false);
 const MAX_PAYLOAD_SIZE: &str = "MAX_PAYLOAD_SIZE";
@@ -52,6 +53,7 @@ pub struct Server {
     injected: DependencyInjection,
     middlewares: Middleware,
     extra_headers: Arc<Mutex<HashMap<String, String>>>,
+    auto_compression: bool,
 }
 
 #[pymethods]
@@ -68,6 +70,7 @@ impl Server {
             injected: inject,
             middlewares,
             extra_headers: Arc::new(HashMap::new().into()),
+            auto_compression: true,
         }
     }
 
@@ -106,6 +109,10 @@ impl Server {
 
     pub fn set_shutdown_handler(&mut self, handler: FunctionInfo) {
         self.shutdown_handler = Some(Arc::new(handler));
+    }
+
+    pub fn set_auto_compression(&mut self, enabled: bool) {
+        self.auto_compression = enabled;
     }
 
     pub fn start(
@@ -158,6 +165,7 @@ impl Server {
         let inject_copy = self.injected.clone();
         let copy_middlewares = self.middlewares.clone();
         let extra_headers = self.extra_headers.clone().lock().unwrap().clone();
+        let auto_compression = self.auto_compression;
         thread::spawn(move || {
             let rt = tokio::runtime::Builder::new_multi_thread()
                 .worker_threads(workers)
@@ -229,6 +237,15 @@ impl Server {
                             .latency_unit(LatencyUnit::Millis),
                     ),
                 );
+                if auto_compression {
+                    // Add compression and decompression layers
+                    app = app
+                        .layer(
+                            ServiceBuilder::new()
+                                .layer(RequestDecompressionLayer::new())
+                                .layer(CompressionLayer::new()),
+                        )
+                }
                 debug!("Application started");
                 // run our app with hyper, listening globally on port 3000
                 let listener = tokio::net::TcpListener::from_std(raw_socket.into()).unwrap();
@@ -297,6 +314,15 @@ async fn execute_request(
     let mut response = execute_http_function(&request, &function, deps)
         .await
         .unwrap();
+
+    // mapping neaded header request to response
+    response.headers.set(
+        "accept-encoding".to_string(),
+        request
+            .headers
+            .get("accept-encoding".to_string())
+            .unwrap_or_default(),
+    );
 
     for after_middleware in middlewares.get_after_hooks() {
         response = match execute_middleware_function(&response, &after_middleware).await {

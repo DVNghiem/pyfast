@@ -27,6 +27,7 @@ def run_processes(
     reload: bool = True,
     on_startup: FunctionInfo | None = None,
     on_shutdown: FunctionInfo | None = None,
+    auto_compression: bool = False,
 ) -> List[Process]:
     socket = SocketHeld(host, port)
 
@@ -43,6 +44,7 @@ def run_processes(
         response_headers,
         on_startup,
         on_shutdown,
+        auto_compression,
     )
 
     def terminating_signal_handler(_sig, _frame):
@@ -94,6 +96,7 @@ def init_processpool(
     response_headers: Dict[str, str],
     on_startup: FunctionInfo | None = None,
     on_shutdown: FunctionInfo | None = None,
+    auto_compression: bool = False,
 ) -> List[Process]:
     process_pool = []
 
@@ -113,6 +116,7 @@ def init_processpool(
                 response_headers,
                 on_startup,
                 on_shutdown,
+                auto_compression,
             ),
         )
         process.start()
@@ -147,6 +151,7 @@ def spawn_process(
     response_headers: Dict[str, str],
     on_startup: FunctionInfo | None = None,
     on_shutdown: FunctionInfo | None = None,
+    auto_compression: bool = False,
 ):
     loop = initialize_event_loop()
 
@@ -157,6 +162,7 @@ def spawn_process(
     server.set_before_hooks(hooks=before_request)
     server.set_after_hooks(hooks=after_request)
     server.set_response_headers(headers=response_headers)
+    server.set_auto_compression(enabled=auto_compression)
 
     if on_startup:
         server.set_startup_handler(on_startup)
