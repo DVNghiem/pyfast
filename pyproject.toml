@@ -67,7 +67,7 @@ multiprocess = "^0.70.17"
 uvloop = { version = "^0.21.0", markers = "sys_platform != 'win32' and (sys_platform != 'cygwin' and platform_python_implementation != 'PyPy')" }
 cryptography = "^43.0.3"
 watchdog = "^6.0.0"
-redis = "^5.2.1"
+aiohttp = "^3.11.10"
 
 [tool.poetry.group.test.dependencies]
 pytest = "7.2.1"

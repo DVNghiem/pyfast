@@ -49,6 +49,12 @@ class ArgsConfig:
             action="store_true",
             help="It restarts the server based on file changes.",
         )
+
+        parser.add_argument(
+            "--auto-compression",
+            action="store_true",
+            help="It compresses the response automatically.",
+        )
         args, _ = parser.parse_known_args()
 
         self.host = args.host or "127.0.0.1"
@@ -57,3 +63,4 @@ class ArgsConfig:
         self.processes = args.processes or 1
         self.workers = args.workers or 1
         self.reload = args.reload or False
+        self.auto_compression = args.auto_compression

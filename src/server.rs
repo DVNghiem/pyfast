@@ -1,12 +1,9 @@
 use crate::{
-    executor::{execute_http_function, execute_middleware_function},
+    executor::{execute_http_function, execute_middleware_function, execute_startup_handler},
     middlewares::base::Middleware,
     router::router::Router,
     types::{function_info::FunctionInfo, middleware::MiddlewareReturn, request::Request},
-    ws::{
-        router::WebsocketRouter, socket::SocketHeld,
-        websocket::websocket_handler,
-    },
+    ws::{router::WebsocketRouter, socket::SocketHeld, websocket::websocket_handler},
 };
 use pyo3::{exceptions::PyValueError, prelude::*, types::PyDict};
 use std::{
@@ -23,6 +20,7 @@ use std::{
     process::exit,
     sync::{atomic::AtomicBool, Arc},
 };
+use tower::ServiceBuilder;
 
 use axum::{
     body::Body,
@@ -33,14 +31,14 @@ use axum::{
     Extension, Router as RouterServer,
 };
 
+use crate::di::DependencyInjection;
 use tower_http::{
     trace::{DefaultOnResponse, TraceLayer},
     LatencyUnit,
+    {compression::CompressionLayer, decompression::RequestDecompressionLayer},
 };
 use tracing::{debug, Level};
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt};
-
-use crate::di::DependencyInjection;
 
 static STARTED: AtomicBool = AtomicBool::new(false);
 const MAX_PAYLOAD_SIZE: &str = "MAX_PAYLOAD_SIZE";
@@ -55,6 +53,7 @@ pub struct Server {
     injected: DependencyInjection,
     middlewares: Middleware,
     extra_headers: Arc<Mutex<HashMap<String, String>>>,
+    auto_compression: bool,
 }
 
 #[pymethods]
@@ -71,6 +70,7 @@ impl Server {
             injected: inject,
             middlewares,
             extra_headers: Arc::new(HashMap::new().into()),
+            auto_compression: true,
         }
     }
 
@@ -101,6 +101,18 @@ impl Server {
     pub fn set_response_headers(&mut self, headers: HashMap<String, String>) {
         let mut extra_headers = self.extra_headers.lock().unwrap();
         *extra_headers = headers;
+    }
+
+    pub fn set_startup_handler(&mut self, handler: FunctionInfo) {
+        self.startup_handler = Some(Arc::new(handler));
+    }
+
+    pub fn set_shutdown_handler(&mut self, handler: FunctionInfo) {
+        self.shutdown_handler = Some(Arc::new(handler));
+    }
+
+    pub fn set_auto_compression(&mut self, enabled: bool) {
+        self.auto_compression = enabled;
     }
 
     pub fn start(
@@ -134,7 +146,7 @@ impl Server {
         let event_loop = asyncio.call_method0("new_event_loop")?;
         asyncio.call_method1("set_event_loop", (event_loop,))?;
 
-        let _startup_handler = self.startup_handler.clone();
+        let startup_handler = self.startup_handler.clone();
         let shutdown_handler = self.shutdown_handler.clone();
 
         let task_locals = pyo3_asyncio::TaskLocals::new(event_loop).copy_context(py)?;
@@ -153,6 +165,7 @@ impl Server {
         let inject_copy = self.injected.clone();
         let copy_middlewares = self.middlewares.clone();
         let extra_headers = self.extra_headers.clone().lock().unwrap().clone();
+        let auto_compression = self.auto_compression;
         thread::spawn(move || {
             let rt = tokio::runtime::Builder::new_multi_thread()
                 .worker_threads(workers)
@@ -169,6 +182,9 @@ impl Server {
             debug!("Waiting for process to start...");
 
             rt.block_on(async move {
+                let task_locals_copy = task_locals_copy.clone();
+                let _ = execute_startup_handler(startup_handler, &task_locals_copy).await;
+
                 let task_locals = task_locals_copy.clone();
                 let mut app = RouterServer::new();
 
@@ -221,6 +237,15 @@ impl Server {
                             .latency_unit(LatencyUnit::Millis),
                     ),
                 );
+                if auto_compression {
+                    // Add compression and decompression layers
+                    app = app
+                        .layer(
+                            ServiceBuilder::new()
+                                .layer(RequestDecompressionLayer::new())
+                                .layer(CompressionLayer::new()),
+                        )
+                }
                 debug!("Application started");
                 // run our app with hyper, listening globally on port 3000
                 let listener = tokio::net::TcpListener::from_std(raw_socket.into()).unwrap();
@@ -230,8 +255,6 @@ impl Server {
 
         let event_loop = (*event_loop).call_method0("run_forever");
         if event_loop.is_err() {
-            // debug!("Ctrl c handler");
-
             if let Some(function) = shutdown_handler {
                 if function.is_async {
                     pyo3_asyncio::tokio::run_until_complete(
@@ -291,6 +314,15 @@ async fn execute_request(
     let mut response = execute_http_function(&request, &function, deps)
         .await
         .unwrap();
+
+    // mapping neaded header request to response
+    response.headers.set(
+        "accept-encoding".to_string(),
+        request
+            .headers
+            .get("accept-encoding".to_string())
+            .unwrap_or_default(),
+    );
 
     for after_middleware in middlewares.get_after_hooks() {
         response = match execute_middleware_function(&response, &after_middleware).await {

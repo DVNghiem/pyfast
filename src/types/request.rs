@@ -98,6 +98,8 @@ pub struct PyBodyData {
 
 #[derive(Default, Debug, Clone, FromPyObject)]
 pub struct Request {
+
+    pub path: String,
     pub query_params: QueryParams,
     pub headers: Header,
     pub method: String,
@@ -118,6 +120,7 @@ impl ToPyObject for Request {
         let body = self.body.clone().to_object(py).extract(py).unwrap();
 
         let request = PyRequest {
+            path: self.path.clone(),
             query_params,
             path_params,
             headers,
@@ -161,6 +164,7 @@ impl Request {
         let context_id = uuid::Uuid::new_v4().to_string();
 
         // parse the header to python header object
+        let path = request.uri().path().to_string();
         let headers = Header::from_hyper_headers(request.headers());
         let method = request.method().to_string();
         let content_type = request
@@ -247,6 +251,7 @@ impl Request {
         };
 
         Self {
+            path,
             query_params,
             headers: headers.clone(),
             method,
@@ -262,6 +267,8 @@ impl Request {
 #[pyclass(name = "Request")]
 #[derive(Clone)]
 pub struct PyRequest {
+    #[pyo3(get, set)]
+    pub path: String,
     #[pyo3(get, set)]
     pub query_params: QueryParams,
     #[pyo3(get, set)]
@@ -285,6 +292,7 @@ impl PyRequest {
     #[new]
     #[allow(clippy::too_many_arguments)]
     pub fn new(
+        path: String,
         query_params: QueryParams,
         headers: Py<Header>,
         path_params: Py<PyDict>,
@@ -295,6 +303,7 @@ impl PyRequest {
         timestamp: u32,
     ) -> Self {
         Self {
+            path,
             query_params,
             headers,
             path_params,

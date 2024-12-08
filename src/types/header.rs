@@ -1,13 +1,14 @@
+use std::collections::HashMap;
+
 use axum::http::HeaderMap;
-use dashmap::DashMap;
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyList};
+use pyo3::types::{PyDict, PyString};
 
 // Custom Multimap class
 #[pyclass(name = "Header")]
 #[derive(Clone, Debug, Default)]
 pub struct Header {
-    pub headers: DashMap<String, Vec<String>>,
+    pub headers: HashMap<String, String>,
 }
 
 #[pymethods]
@@ -16,68 +17,36 @@ impl Header {
     pub fn new(default_headers: Option<&PyDict>) -> Self {
         match default_headers {
             Some(default_headers) => {
-                let headers = DashMap::new();
+                let mut headers = HashMap::new();
                 for (key, value) in default_headers {
                     let key = key.to_string().to_lowercase();
-
-                    let new_value = value.downcast::<PyList>();
-
-                    if let Ok(new_value) = new_value {
-                        let value: Vec<String> = new_value.iter().map(|x| x.to_string()).collect();
-                        headers.entry(key).or_insert_with(Vec::new).extend(value);
-                    } else {
-                        let value = value.to_string();
-                        headers.entry(key).or_insert_with(Vec::new).push(value);
-                    }
+                    let value = value.to_string();
+                    headers.insert(key, value);
                 }
                 Header { headers }
             }
             None => Header {
-                headers: DashMap::new(),
+                headers: HashMap::new(),
             },
         }
     }
 
     pub fn set(&mut self, key: String, value: String) {
-        self.headers.insert(key.to_lowercase(), vec![value]);
-    }
-
-    pub fn append(&mut self, key: String, value: String) {
-        self.headers
-            .entry(key.to_lowercase())
-            .or_default()
-            .push(value);
-    }
-
-    pub fn get_all(&self, py: Python, key: String) -> Py<PyList> {
-        match self.headers.get(&key.to_lowercase()) {
-            Some(values) => {
-                let py_values = PyList::new(py, values.iter().map(|value| value.to_object(py)));
-                py_values.into()
-            }
-            None => PyList::empty(py).into(),
-        }
+        self.headers.insert(key.to_lowercase(), value);
     }
 
     pub fn get(&self, key: String) -> Option<String> {
-        // return the last value
-        match self.headers.get(&key.to_lowercase()) {
-            Some(iter) => {
-                let (_, values) = iter.pair();
-                let last_value = values.last().unwrap();
-                Some(last_value.to_string())
-            }
-            None => None,
-        }
+        self.headers.get(&key.to_lowercase()).cloned()
     }
 
     pub fn get_headers(&self, py: Python) -> Py<PyDict> {
         // return as a dict of lists
         let dict = PyDict::new(py);
-        for iter in self.headers.iter() {
-            let (key, values) = iter.pair();
-            let py_values = PyList::new(py, values.iter().map(|value| value.to_object(py)));
-            dict.set_item(key, py_values).unwrap();
+        for (key, value) in &self.headers {
+            let key = PyString::new(py, key);
+            let value = PyString::new(py, value);
+            dict.set_item(key, value).unwrap();
+
         }
         dict.into()
     }
@@ -89,46 +58,20 @@ impl Header {
     pub fn populate_from_dict(&mut self, headers: &PyDict) {
         for (key, value) in headers {
             let key = key.to_string().to_lowercase();
-            let new_value = value.downcast::<PyList>();
-
-            if let Ok(new_value) = new_value {
-                let value: Vec<String> = new_value.iter().map(|x| x.to_string()).collect();
-                self.headers.entry(key).or_default().extend(value);
-            } else {
-                let value = value.to_string();
-                self.headers.entry(key).or_default().push(value);
-            }
+            let value = value.to_string();
+            self.headers.insert(key, value);
         }
+    }
+
+    pub fn update(&mut self, headers: Py<PyDict>) {
+        Python::with_gil(|py| {
+            let headers = headers.as_ref(py);
+            self.populate_from_dict(headers);
+        });
     }
 
     pub fn is_empty(&self) -> bool {
         self.headers.is_empty()
-    }
-
-    fn __eq__(&self, other: &Header) -> bool {
-        if self.headers.is_empty() && other.headers.is_empty() {
-            return true;
-        }
-
-        if self.headers.len() != other.headers.len() {
-            return false;
-        }
-
-        for iter in &self.headers {
-            let (key, values) = iter.pair();
-            match other.headers.get(key) {
-                Some(other_values) => {
-                    if values.len() != other_values.len()
-                        || !values.iter().all(|v| other_values.contains(v))
-                    {
-                        return false;
-                    }
-                }
-                None => return false,
-            }
-        }
-
-        true
     }
 
     pub fn __contains__(&self, key: String) -> bool {
@@ -154,25 +97,19 @@ impl Header {
     }
 
     pub fn extend(&mut self, headers: &Header) {
-        for iter in headers.headers.iter() {
-            let (key, values) = iter.pair();
-            let mut entry = self.headers.entry(key.clone()).or_default();
-            entry.extend(values.clone());
+        for (key, value) in &headers.headers {
+            self.headers.insert(key.clone(), value.clone());
         }
     }
 
     pub fn from_hyper_headers(req_headers: &HeaderMap) -> Self {
-        let headers = Header::default();
-
-        for (key, value) in req_headers {
-            let key = key.to_string().to_lowercase();
-            let value = match value.to_str() {
-                Ok(value) => value.to_string(),
-                Err(_) => continue,
-            };
-            headers.headers.entry(key).or_default().push(value);
+        let mut headers = HashMap::new();
+        for (key, value) in req_headers.iter() {
+            headers.insert(
+                key.as_str().to_lowercase(),
+                value.to_str().unwrap().to_string(),
+            );
         }
-
-        headers
+        Header { headers }
     }
 }

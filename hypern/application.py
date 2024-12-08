@@ -190,6 +190,14 @@ class Hypern:
                 """
             ),
         ] = None,
+        auto_compression: Annotated[
+            bool,
+            Doc(
+                """
+                Enable automatic compression of responses.
+                """
+            ),
+        ] = False,
         *args: Any,
         **kwargs: Any,
     ) -> None:
@@ -202,6 +210,9 @@ class Hypern:
         self.middleware_after_request = []
         self.response_headers = {}
         self.args = ArgsConfig()
+        self.start_up_handler = None
+        self.shutdown_handler = None
+        self.auto_compression = auto_compression
 
         for route in routes or []:
             self.router.extend_route(route(app=self).routes)
@@ -377,6 +388,9 @@ class Hypern:
             after_request=self.middleware_after_request,
             response_headers=self.response_headers,
             reload=self.args.reload,
+            on_startup=self.start_up_handler,
+            on_shutdown=self.shutdown_handler,
+            auto_compression=self.args.auto_compression or self.auto_compression,
         )
 
     def add_route(self, method: HTTPMethod, endpoint: str, handler: Callable[..., Any]):
@@ -403,3 +417,22 @@ class Hypern:
         """
         for route in ws_route.routes:
             self.websocket_router.add_route(route=route)
+
+    def on_startup(self, handler: Callable[..., Any]):
+        """
+        Registers a function to be executed on application startup.
+
+        Args:
+            handler (Callable[..., Any]): The function to be executed on application startup.
+        """
+        # decorator
+        self.start_up_handler = FunctionInfo(handler=handler, is_async=asyncio.iscoroutinefunction(handler))
+
+    def on_shutdown(self, handler: Callable[..., Any]):
+        """
+        Registers a function to be executed on application shutdown.
+
+        Args:
+            handler (Callable[..., Any]): The function to be executed on application shutdown.
+        """
+        self.shutdown_handler = FunctionInfo(handler=handler, is_async=asyncio.iscoroutinefunction(handler))

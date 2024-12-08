@@ -1,6 +1,8 @@
+use std::sync::Arc;
+
 use pyo3::{prelude::*, types::PyDict};
 
-use anyhow::Result;
+use pyo3_asyncio::TaskLocals;
 use crate::{
     di::DependencyInjection,
     types::{function_info::FunctionInfo, middleware::MiddlewareReturn, request::Request, response::Response},
@@ -59,7 +61,7 @@ pub async fn execute_http_function(
 pub async fn execute_middleware_function<T>(
     input: &T,
     function: &FunctionInfo,
-) -> Result<MiddlewareReturn>
+) -> PyResult<MiddlewareReturn>
 where
     T: for<'a> FromPyObject<'a> + ToPyObject,
 {
@@ -69,7 +71,7 @@ where
         })?
         .await?;
 
-        Python::with_gil(|py| -> Result<MiddlewareReturn> {
+        Python::with_gil(|py| -> PyResult<MiddlewareReturn> {
             let output_response = output.extract::<Response>(py);
             match output_response {
                 Ok(o) => Ok(MiddlewareReturn::Response(o)),
@@ -77,7 +79,7 @@ where
             }
         })
     } else {
-        Python::with_gil(|py| -> Result<MiddlewareReturn> {
+        Python::with_gil(|py| -> PyResult<MiddlewareReturn> {
             let output = get_function_output(function, py, input, None)?;
             match output.extract::<Response>() {
                 Ok(o) => Ok(MiddlewareReturn::Response(o)),
@@ -85,4 +87,25 @@ where
             }
         })
     }
+}
+
+
+pub async fn execute_startup_handler(
+    event_handler: Option<Arc<FunctionInfo>>,
+    task_locals: &TaskLocals,
+) -> PyResult<()> {
+    if let Some(function) = event_handler {
+        if function.is_async {
+            Python::with_gil(|py| {
+                pyo3_asyncio::into_future_with_locals(
+                    task_locals,
+                    function.handler.as_ref(py).call0()?,
+                )
+            })?
+            .await?;
+        } else {
+            Python::with_gil(|py| function.handler.call0(py))?;
+        }
+    }
+    Ok(())
 }

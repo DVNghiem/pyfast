@@ -185,6 +185,9 @@ class Server:
     def set_before_hooks(self, hooks: List[FunctionInfo]) -> None: ...
     def set_after_hooks(self, hooks: List[FunctionInfo]) -> None: ...
     def set_response_headers(self, headers: Dict[str, str]) -> None: ...
+    def set_startup_handler(self, on_startup: FunctionInfo) -> None: ...
+    def set_shutdown_handler(self, on_shutdown: FunctionInfo) -> None: ...
+    def set_auto_compression(self, enabled: bool) -> None: ...
 
 class Route:
     path: str
@@ -243,17 +246,25 @@ class WebsocketRouter:
 class Header:
     headers: Dict[str, str]
 
+    def get(self, key: str) -> str | None: ...
+    def set(self, key: str, value: str) -> None: ...
+    def append(self, key: str, value: str) -> None: ...
+    def update(self, headers: Dict[str, str]) -> None: ...
+    def get_headers(self) -> Dict[str, str]: ...
+
 @dataclass
 class Response:
     status_code: int
     response_type: str
-    headers: Any
+    headers: Header
     description: str
     file_path: str
 
 @dataclass
 class QueryParams:
     queries: Dict[str, List[str]]
+
+    def to_dict(self) -> Dict[str, str]: ...
 
 @dataclass
 class UploadedFile:
@@ -271,11 +282,15 @@ class BodyData:
 
 @dataclass
 class Request:
+    path: str
     query_params: QueryParams
-    headers: Dict[str, str]
+    headers: Header
     path_params: Dict[str, str]
     body: BodyData
     method: str
     remote_addr: str
     timestamp: float
     context_id: str
+
+    def json(self) -> Dict[str, Any]: ...
+    def set_body(self, body: BodyData) -> None: ...
