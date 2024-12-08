@@ -5,9 +5,9 @@ from typing import Any, Callable, Dict, List, Tuple
 
 @dataclass
 class BaseBackend:
-    get: Callable[[str], Any]
-    set: Callable[[Any, str, int], None]
-    delete_startswith: Callable[[str], None]
+    def get(self, key: str) -> Any: ...
+    def set(self, value: Any, key: str, ttl: int) -> None: ...
+    def delete_startswith(self, key: str) -> None: ...
 
 @dataclass
 class RedisBackend(BaseBackend):

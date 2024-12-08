@@ -5,6 +5,8 @@ from typing import Callable, Generic, Optional, TypeVar
 
 import orjson
 
+from hypern.hypern import BaseBackend
+
 T = TypeVar("T")
 
 
@@ -69,7 +71,23 @@ class StaleWhileRevalidateStrategy(CacheStrategy[T]):
     Allows serving stale content while revalidating in the background.
     """
 
-    def __init__(self, backend: CacheStrategy[T], revalidate_after: int, ttl: int, revalidate_fn: Callable[..., T]):
+    def __init__(self, backend: BaseBackend, revalidate_after: int, ttl: int, revalidate_fn: Callable[..., T]):
+        """
+        Initialize the caching strategy.
+
+        Args:
+            backend (BaseBackend): The backend storage for caching.
+            revalidate_after (int): The time in seconds after which the cache should be revalidated.
+            ttl (int): The time-to-live for cache entries in seconds.
+            revalidate_fn (Callable[..., T]): The function to call for revalidating the cache.
+
+        Attributes:
+            backend (BaseBackend): The backend storage for caching.
+            revalidate_after (int): The time in seconds after which the cache should be revalidated.
+            ttl (int): The time-to-live for cache entries in seconds.
+            revalidate_fn (Callable[..., T]): The function to call for revalidating the cache.
+            _revalidation_locks (dict): A dictionary to manage revalidation locks.
+        """
         self.backend = backend
         self.revalidate_after = revalidate_after
         self.ttl = ttl
@@ -128,7 +146,7 @@ class CacheAsideStrategy(CacheStrategy[T]):
     Data is loaded into cache only when requested.
     """
 
-    def __init__(self, backend: CacheStrategy[T], load_fn: Callable[[str], T], ttl: int, write_through: bool = False):
+    def __init__(self, backend: BaseBackend, load_fn: Callable[[str], T], ttl: int, write_through: bool = False):
         self.backend = backend
         self.load_fn = load_fn
         self.ttl = ttl
