@@ -156,7 +156,9 @@ class CacheAsideStrategy(CacheStrategy[T]):
         # Try to get from cache first
         value = await self.backend.get(key)
         if value:
-            return value if isinstance(value, bytes) else value
+            if isinstance(value, bytes):
+                value = orjson.loads(value)
+            return value
 
         # On cache miss, load from source
         value = await self.load_fn(key)
