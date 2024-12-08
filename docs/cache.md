@@ -71,28 +71,34 @@ To integrate caching with your API requests, you can use the `cache_with_strateg
 ```python
 from hypern import Hypern, Request
 from hypern.routing import Route
-from strategies import cache_with_strategy, StaleWhileRevalidateStrategy
+from hypern.response import PlainTextResponse
+
+from hypern.caching import StaleWhileRevalidateStrategy, cache_with_strategy,RedisBackend
+
 
 async def revalidate_fn(key: str) -> Any:
     # Implement your revalidation logic here
     pass
 
-backend = BaseBackend()
+backend = RedisBackend(url="redis://localhost:6379")
 strategy = StaleWhileRevalidateStrategy(
     backend=backend,
-    revalidate_after=60,
-    ttl=300,
+    revalidate_after=60,  # Revalidate after 60 seconds
+    ttl=300,  # Time-to-live for cache entries is 300 seconds
     revalidate_fn=revalidate_fn
 )
 
 app = Hypern()
 route = Route("/my-api")
 
-@cache_with_strategy(strategy, key_prefix="my_api")
+@cache_with_strategy(strategy, key_prefix="test")
+async def get_result():
+    return "Hello, World!"
+
 @route.get("/hello")
 async def my_api_endpoint(request: Request):
-    # Your API logic here
-    return {"message": "Hello, World!"}
+    result = await self.get_result()
+    return PlainTextResponse(result)
 
 app.add_route(route)
 

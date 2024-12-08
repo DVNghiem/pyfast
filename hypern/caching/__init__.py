@@ -1,4 +1,5 @@
-from hypern.hypern import BaseBackend, RedisBackend
+from .backend import BaseBackend
+from .redis_backend import RedisBackend
 
 from .strategies import CacheAsideStrategy, CacheEntry, CacheStrategy, StaleWhileRevalidateStrategy, cache_with_strategy
 

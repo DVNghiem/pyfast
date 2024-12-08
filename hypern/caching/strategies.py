@@ -5,7 +5,7 @@ from typing import Callable, Generic, Optional, TypeVar
 
 import orjson
 
-from hypern.hypern import BaseBackend
+from .backend import BaseBackend
 
 T = TypeVar("T")
 
@@ -118,7 +118,7 @@ class StaleWhileRevalidateStrategy(CacheStrategy[T]):
 
     async def set(self, key: str, value: T, ttl: Optional[int] = None) -> None:
         entry = CacheEntry(value=value, created_at=time.time(), ttl=ttl or self.ttl, revalidate_after=self.revalidate_after)
-        await self.backend.set(key, entry.to_json())
+        await self.backend.set(key, entry.to_json(), ttl=ttl)
 
     async def delete(self, key: str) -> None:
         await self.backend.delete(key)
@@ -180,7 +180,7 @@ class CacheAsideStrategy(CacheStrategy[T]):
             await self.load_fn.write(key, value)
 
 
-def cache_with_strategy(strategy: CacheStrategy, key_prefix: str = None):
+def cache_with_strategy(strategy: CacheStrategy, key_prefix: str | None = None, ttl: int = 3600):
     """
     Decorator for using cache strategies
     """
@@ -190,10 +190,16 @@ def cache_with_strategy(strategy: CacheStrategy, key_prefix: str = None):
             # Generate cache key
             cache_key = f"{key_prefix or func.__name__}:{hash(str(args) + str(kwargs))}"
 
-            async def loader():
-                return await func(*args, **kwargs)
+            result = await strategy.get(cache_key)
+            if result is not None:
+                return result
 
-            return await strategy.get(cache_key, loader)
+            # Execute function and cache result
+            result = await func(*args, **kwargs)
+            if result is not None:
+                await strategy.set(cache_key, result, ttl)
+
+            return result
 
         return wrapper
 
