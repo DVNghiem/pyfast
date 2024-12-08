@@ -4,20 +4,6 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Tuple
 
 @dataclass
-class BaseBackend:
-    get: Callable[[str], Any]
-    set: Callable[[Any, str, int], None]
-    delete_startswith: Callable[[str], None]
-
-@dataclass
-class RedisBackend(BaseBackend):
-    url: str
-
-    get: Callable[[str], Any]
-    set: Callable[[Any, str, int], None]
-    delete_startswith: Callable[[str], None]
-
-@dataclass
 class BaseSchemaGenerator:
     remove_converter: Callable[[str], str]
     parse_docstring: Callable[[Callable[..., Any]], str]
