@@ -1,10 +1,11 @@
+from typing import Optional
 import time
 from abc import ABC, abstractmethod
 from threading import Lock
 
 from hypern.hypern import Request, Response
 
-from .base import Middleware
+from .base import Middleware, MiddlewareConfig
 
 
 class StorageBackend(ABC):
@@ -102,14 +103,14 @@ class RateLimitMiddleware(Middleware):
     Requests per minute for a given IP address.
     """
 
-    def __init__(self, storage_backend, requests_per_minute=60, window_size=60):
-        super().__init__()
+    def __init__(self, storage_backend, config: Optional[MiddlewareConfig] = None, requests_per_minute=60, window_size=60):
+        super().__init__(config)
         self.storage = storage_backend
         self.requests_per_minute = requests_per_minute
         self.window_size = window_size
 
     def get_request_identifier(self, request: Request):
-        return request.ip_addr
+        return request.remote_addr
 
     def before_request(self, request: Request):
         """

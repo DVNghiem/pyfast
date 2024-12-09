@@ -663,6 +663,7 @@ dependencies = [
  "chrono",
  "chrono-tz",
  "cron",
+ "futures",
  "once_cell",
  "pyo3",
  "pyo3-asyncio",

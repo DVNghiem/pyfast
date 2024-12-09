@@ -1,10 +1,11 @@
 use crate::{
     executor::{execute_http_function, execute_middleware_function, execute_startup_handler},
-    middlewares::base::Middleware,
+    middlewares::base::{Middleware, MiddlewareConfig},
     router::router::Router,
     types::{function_info::FunctionInfo, middleware::MiddlewareReturn, request::Request},
     ws::{router::WebsocketRouter, socket::SocketHeld, websocket::websocket_handler},
 };
+use futures::future::join_all;
 use pyo3::{exceptions::PyValueError, prelude::*, types::PyDict};
 use std::{
     collections::HashMap,
@@ -90,11 +91,11 @@ impl Server {
         self.injected = DependencyInjection::from_object(injected);
     }
 
-    pub fn set_before_hooks(&mut self, hooks: Vec<FunctionInfo>) {
+    pub fn set_before_hooks(&mut self, hooks: Vec<(FunctionInfo, MiddlewareConfig)>) {
         self.middlewares.set_before_hooks(hooks);
     }
 
-    pub fn set_after_hooks(&mut self, hooks: Vec<FunctionInfo>) {
+    pub fn set_after_hooks(&mut self, hooks: Vec<(FunctionInfo, MiddlewareConfig)>) {
         self.middlewares.set_after_hooks(hooks);
     }
 
@@ -277,57 +278,75 @@ impl Server {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn execute_request(
     req: HttpRequest<Body>,
     function: FunctionInfo,
     middlewares: Middleware,
     extra_headers: HashMap<String, String>,
-) -> ServerResponse {
+) -> ServerResponse {   
     let deps = req.extensions().get::<DependencyInjection>().cloned();
     let mut request = Request::from_request(req).await;
+    let response_builder = ServerResponse::builder();
 
-    let mut response_builder = ServerResponse::builder();
-    let headers = extra_headers
-        .iter()
-        .map(|(key, value)| (key.as_str(), value.as_str()))
-        .collect::<Vec<_>>();
-    for (key, value) in headers {
-        response_builder = response_builder.header(key, value);
-    }
+    // Execute before middlewares in parallel where possible
+    let before_results = join_all(
+        middlewares
+            .get_before_hooks()
+            .into_iter()
+            .filter(|(_, config)| !config.is_conditional)
+            .map(|(middleware, _)| {
+                let request = request.clone();
+                let middleware = middleware.clone();
+                async move { execute_middleware_function(&request, &middleware).await }
+            })
+    ).await;
 
-    for before_middleware in middlewares.get_before_hooks() {
-        request = match execute_middleware_function(&request, &before_middleware).await {
-            Ok(MiddlewareReturn::Request(r)) => r,
-            Ok(MiddlewareReturn::Response(r)) => {
-                return r.to_axum_response(extra_headers);
-            }
+    // Process results and handle any errors
+    for result in before_results {
+        match result {
+            Ok(MiddlewareReturn::Request(r)) => request = r,
+            Ok(MiddlewareReturn::Response(r)) => return r.to_axum_response(extra_headers),
             Err(e) => {
-                response_builder = response_builder.status(StatusCode::INTERNAL_SERVER_ERROR);
                 return response_builder
-                    .body(Body::from(format!("Error: {}", e)))
-                    .unwrap();
+                .body(Body::from(format!("Error: {}", e)))
+                .unwrap();
             }
-        };
+        }
     }
 
-    let mut response = execute_http_function(&request, &function, deps)
-        .await
-        .unwrap();
+    // Execute conditional middlewares sequentially
+    for (middleware, config) in middlewares.get_before_hooks() {
+        if config.is_conditional {
+            match execute_middleware_function(&request, &middleware).await {
+                Ok(MiddlewareReturn::Request(r)) => request = r,
+                Ok(MiddlewareReturn::Response(r)) => return r.to_axum_response(extra_headers),
+                Err(e) => {
+                    return ServerResponse::builder()
+                        .status(StatusCode::INTERNAL_SERVER_ERROR)
+                        .body(Body::from(format!("Error: {}", e)))
+                        .unwrap();
+                }
+            }
+        }
+    }
 
-    // mapping context id
-    response.context_id = request.context_id;
+    // Execute the main handler
+    let mut response = execute_http_function(&request, &function, deps).await.unwrap();
 
-    // mapping neaded header request to response
-    response.headers.set(
-        "accept-encoding".to_string(),
-        request
-            .headers
-            .get("accept-encoding".to_string())
-            .unwrap_or_default(),
-    );
+     // mapping context id
+     response.context_id = request.context_id;
 
-    for after_middleware in middlewares.get_after_hooks() {
+     // mapping neaded header request to response
+     response.headers.set(
+         "accept-encoding".to_string(),
+         request
+             .headers
+             .get("accept-encoding".to_string())
+             .unwrap_or_default(),
+     );
+
+    // Execute after middlewares with similar optimization
+    for (after_middleware, _) in middlewares.get_after_hooks() {
         response = match execute_middleware_function(&response, &after_middleware).await {
             Ok(MiddlewareReturn::Request(_)) => {
                 return response_builder

@@ -4,20 +4,6 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Tuple
 
 @dataclass
-class BaseBackend:
-    get: Callable[[str], Any]
-    set: Callable[[Any, str, int], None]
-    delete_startswith: Callable[[str], None]
-
-@dataclass
-class RedisBackend(BaseBackend):
-    url: str
-
-    get: Callable[[str], Any]
-    set: Callable[[Any, str, int], None]
-    delete_startswith: Callable[[str], None]
-
-@dataclass
 class BaseSchemaGenerator:
     remove_converter: Callable[[str], str]
     parse_docstring: Callable[[Callable[..., Any]], str]
@@ -309,3 +295,11 @@ class Request:
 
     def json(self) -> Dict[str, Any]: ...
     def set_body(self, body: BodyData) -> None: ...
+
+@dataclass
+class MiddlewareConfig:
+    priority: int = 0
+    is_conditional: bool = True
+
+    @staticmethod
+    def default(self) -> MiddlewareConfig: ...

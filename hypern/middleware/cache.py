@@ -2,7 +2,7 @@ from typing import Dict, List, Optional
 from datetime import datetime
 import hashlib
 from .base import Middleware
-from hypern.hypern import Request, Response, Header
+from hypern.hypern import Request, Response, Header, MiddlewareConfig
 
 
 class CacheConfig:
@@ -60,17 +60,18 @@ class EdgeCacheMiddleware(Middleware):
     - CDN-specific headers
     """
 
-    def __init__(self, config: CacheConfig | None = None):
-        super().__init__()
-        self.config = config or CacheConfig()
+    def __init__(self, cache_config: CacheConfig | None = None, config: Optional[MiddlewareConfig] = None):
+        super().__init__(config)
+        self.cache_config = cache_config or CacheConfig()
         self._etag_cache: Dict[str, str] = {}
+        self.request_context = {}
 
     def _should_cache(self, request: Request, path: str) -> bool:
         """Determine if the request should be cached"""
-        if request.method in self.config.exclude_methods:
+        if request.method in self.cache_config.exclude_methods:
             return False
 
-        if any(excluded in path for excluded in self.config.exclude_paths):
+        if any(excluded in path for excluded in self.cache_config.exclude_paths):
             return False
 
         return True
@@ -79,10 +80,10 @@ class EdgeCacheMiddleware(Middleware):
         """Generate a unique cache key based on request attributes"""
         components = [request.method, request.path]
 
-        if self.config.include_query_string:
+        if self.cache_config.include_query_string:
             components.append(str(request.query_params))
 
-        for header in self.config.cache_by_headers:
+        for header in self.cache_config.cache_by_headers:
             value = request.headers.get(str(header).lower())
             if value:
                 components.append(f"{header}:{value}")
@@ -101,27 +102,33 @@ class EdgeCacheMiddleware(Middleware):
         directives = []
 
         # Determine public/private caching
-        if any(private in path for private in self.config.private_paths):
+        if any(private in path for private in self.cache_config.private_paths):
             directives.append("private")
         else:
             directives.append("public")
 
         # Add max-age directives
-        directives.append(f"max-age={self.config.max_age}")
+        directives.append(f"max-age={self.cache_config.max_age}")
 
-        if self.config.s_maxage is not None:
-            directives.append(f"s-maxage={self.config.s_maxage}")
+        if self.cache_config.s_maxage is not None:
+            directives.append(f"s-maxage={self.cache_config.s_maxage}")
 
-        if self.config.stale_while_revalidate is not None:
-            directives.append(f"stale-while-revalidate={self.config.stale_while_revalidate}")
+        if self.cache_config.stale_while_revalidate is not None:
+            directives.append(f"stale-while-revalidate={self.cache_config.stale_while_revalidate}")
 
-        if self.config.stale_if_error is not None:
-            directives.append(f"stale-if-error={self.config.stale_if_error}")
+        if self.cache_config.stale_if_error is not None:
+            directives.append(f"stale-if-error={self.cache_config.stale_if_error}")
 
         # Add custom cache control directives
-        directives.extend(self.config.cache_control)
+        directives.extend(self.cache_config.cache_control)
 
         return ", ".join(directives)
+
+    def cleanup_context(self, context_id: str):
+        try:
+            del self.request_context[context_id]
+        except Exception:
+            pass
 
     def before_request(self, request: Request) -> Request | Response:
         """Handle conditional requests"""
@@ -135,32 +142,34 @@ class EdgeCacheMiddleware(Middleware):
             if_none_match = request.headers.get("if-none-match")
             if if_none_match and if_none_match == etag:
                 return Response(status_code=304, description=b"", headers=Header({"ETag": etag}))
-
+        self.request_context[request.context_id] = request
         return request
 
     def after_request(self, response: Response) -> Response:
         """Add caching headers to response"""
-        if not self._should_cache(self.app.request, self.app.request.path):
+        request = self.request_context.get(response.context_id)
+        self.cleanup_context(response.context_id)
+        if not self._should_cache(request, request.path):
             response.headers.set("Cache-Control", "no-store")
             return response
 
         # Generate and store ETag
-        cache_key = self._generate_cache_key(self.app.request)
+        cache_key = self._generate_cache_key(request)
         etag = self._generate_etag(response)
         self._etag_cache[cache_key] = etag
 
         # Set cache headers
         response.headers.update(
             {
-                "Cache-Control": self._build_cache_control(self.app.request.path),
+                "Cache-Control": self._build_cache_control(request.path),
                 "ETag": etag,
-                "Vary": ", ".join(self.config.vary_by),
+                "Vary": ", ".join(self.cache_config.vary_by),
                 "Last-Modified": datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S GMT"),
             }
         )
 
         # Add CDN-specific headers
         response.headers.set("CDN-Cache-Control", response.headers["Cache-Control"])
-        response.headers.set("Surrogate-Control", f"max-age={self.config.s_maxage or self.config.max_age}")
+        response.headers.set("Surrogate-Control", f"max-age={self.cache_config.s_maxage or self.cache_config.max_age}")
 
         return response

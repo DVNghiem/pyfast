@@ -1,7 +1,6 @@
 use pyo3::prelude::*;
 
 mod runtime;
-mod cache;
 mod openapi;
 mod background;
 mod scheduler;
@@ -15,9 +14,6 @@ mod middlewares;
 
 #[pymodule]
 fn hypern(_py: Python<'_>, m: &PyModule) -> PyResult<()>  {
-
-    m.add_class::<cache::backend::BaseBackend>()?;
-    m.add_class::<cache::redis_backend::RedisBackend>()?;
 
     m.add_class::<openapi::schemas::BaseSchemaGenerator>()?;
     m.add_class::<openapi::swagger::SwaggerUI>()?;    
@@ -38,6 +34,7 @@ fn hypern(_py: Python<'_>, m: &PyModule) -> PyResult<()>  {
     m.add_class::<types::request::PyBodyData>()?;
     m.add_class::<types::request::PyUploadedFile>()?;
     m.add_class::<types::query::QueryParams>()?;
+    m.add_class::<middlewares::base::MiddlewareConfig>()?;
     
     m.add_class::<ws::socket::SocketHeld>()?;
     m.add_class::<ws::websocket::WebSocketSession>()?;

@@ -1,5 +1,6 @@
-from typing import List
+from typing import List, Optional
 from .base import Middleware
+from hypern.hypern import MiddlewareConfig
 
 
 class CORSMiddleware(Middleware):
@@ -8,8 +9,10 @@ class CORSMiddleware(Middleware):
     methods, and headers.
     """
 
-    def __init__(self, allow_origins: List[str] = None, allow_methods: List[str] = None, allow_headers: List[str] = None) -> None:
-        super().__init__()
+    def __init__(
+        self, config: Optional[MiddlewareConfig] = None, allow_origins: List[str] = None, allow_methods: List[str] = None, allow_headers: List[str] = None
+    ) -> None:
+        super().__init__(config)
         self.allow_origins = allow_origins or []
         self.allow_methods = allow_methods or []
         self.allow_headers = allow_headers or []
