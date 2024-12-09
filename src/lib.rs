@@ -34,6 +34,7 @@ fn hypern(_py: Python<'_>, m: &PyModule) -> PyResult<()>  {
     m.add_class::<types::request::PyBodyData>()?;
     m.add_class::<types::request::PyUploadedFile>()?;
     m.add_class::<types::query::QueryParams>()?;
+    m.add_class::<middlewares::base::MiddlewareConfig>()?;
     
     m.add_class::<ws::socket::SocketHeld>()?;
     m.add_class::<ws::websocket::WebSocketSession>()?;

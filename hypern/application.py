@@ -8,7 +8,7 @@ import orjson
 from typing_extensions import Annotated, Doc
 
 from hypern.datastructures import Contact, HTTPMethod, Info, License
-from hypern.hypern import FunctionInfo, Router, Route as InternalRoute, WebsocketRouter
+from hypern.hypern import FunctionInfo, Router, Route as InternalRoute, WebsocketRouter, MiddlewareConfig
 from hypern.openapi import SchemaGenerator, SwaggerUI
 from hypern.processpool import run_processes
 from hypern.response import HTMLResponse, JSONResponse
@@ -17,6 +17,7 @@ from hypern.scheduler import Scheduler
 from hypern.middleware import Middleware
 from hypern.args_parser import ArgsConfig
 from hypern.ws import WebsocketRoute
+from hypern.logging import logger
 
 AppType = TypeVar("AppType", bound="Hypern")
 
@@ -298,10 +299,12 @@ class Hypern:
             function: The decorator function that registers the middleware.
         """
 
+        logger.warning("This functin will be deprecated in version 0.4.0. Please use the middleware class instead.")
+
         def decorator(func):
             is_async = asyncio.iscoroutinefunction(func)
             func_info = FunctionInfo(handler=func, is_async=is_async)
-            self.middleware_before_request.append(func_info)
+            self.middleware_before_request.append((func_info, MiddlewareConfig.default()))
             return func
 
         return decorator
@@ -317,11 +320,12 @@ class Hypern:
         Returns:
             function: The decorator function that registers the given function.
         """
+        logger.warning("This functin will be deprecated in version 0.4.0. Please use the middleware class instead.")
 
         def decorator(func):
             is_async = asyncio.iscoroutinefunction(func)
             func_info = FunctionInfo(handler=func, is_async=is_async)
-            self.middleware_after_request.append(func_info)
+            self.middleware_after_request.append((func_info, MiddlewareConfig.default()))
             return func
 
         return decorator
@@ -357,11 +361,13 @@ class Hypern:
         before_request = getattr(middleware, "before_request", None)
         after_request = getattr(middleware, "after_request", None)
 
-        if before_request:
-            self.before_request()(before_request)
-        if after_request:
-            self.after_request()(after_request)
-        return self
+        is_async = asyncio.iscoroutinefunction(before_request)
+        before_request = FunctionInfo(handler=before_request, is_async=is_async)
+        self.middleware_before_request.append((before_request, middleware.config))
+
+        is_async = asyncio.iscoroutinefunction(after_request)
+        after_request = FunctionInfo(handler=after_request, is_async=is_async)
+        self.middleware_after_request.append((after_request, middleware.config))
 
     def start(
         self,
