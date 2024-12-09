@@ -4,7 +4,7 @@ from typing import List, Optional
 
 from hypern.hypern import Request, Response
 
-from .base import Middleware
+from .base import Middleware, MiddlewareConfig
 
 
 class CompressionMiddleware(Middleware):
@@ -12,7 +12,9 @@ class CompressionMiddleware(Middleware):
     Middleware for compressing response content using gzip or deflate encoding.
     """
 
-    def __init__(self, min_size: int = 500, compression_level: int = 6, include_types: Optional[List[str]] = None) -> None:
+    def __init__(
+        self, config: Optional[MiddlewareConfig] = None, min_size: int = 500, compression_level: int = 6, include_types: Optional[List[str]] = None
+    ) -> None:
         """
         Initialize compression middleware.
 
@@ -21,7 +23,7 @@ class CompressionMiddleware(Middleware):
             compression_level: Compression level (1-9, higher = better compression but slower)
             include_types: List of content types to compress (defaults to common text types)
         """
-        super().__init__()
+        super().__init__(config)
         self.min_size = min_size
         self.compression_level = compression_level
         self.include_types = include_types or [

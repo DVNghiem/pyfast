@@ -294,3 +294,11 @@ class Request:
 
     def json(self) -> Dict[str, Any]: ...
     def set_body(self, body: BodyData) -> None: ...
+
+@dataclass
+class MiddlewareConfig:
+    priority: int = 0
+    is_conditional: bool = True
+
+    @staticmethod
+    def default(self) -> MiddlewareConfig: ...
