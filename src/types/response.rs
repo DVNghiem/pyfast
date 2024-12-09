@@ -30,6 +30,8 @@ pub struct Response {
     #[pyo3(from_py_with = "get_description_from_pyobject")]
     pub description: Vec<u8>,
     pub file_path: Option<String>,
+
+    pub context_id: String,
 }
 
 impl Response {
@@ -76,6 +78,7 @@ impl ToPyObject for Response {
             headers,
             description,
             file_path: self.file_path.clone(),
+            context_id: self.context_id.clone(),
         };
         Py::new(py, response).unwrap().as_ref(py).into()
     }
@@ -94,6 +97,9 @@ pub struct PyResponse {
     pub description: Py<PyAny>,
     #[pyo3(get)]
     pub file_path: Option<String>,
+
+    #[pyo3(get)]
+    pub context_id: String,
 }
 
 #[pymethods]
@@ -127,6 +133,7 @@ impl PyResponse {
             headers: headers_output,
             description,
             file_path: None,
+            context_id: "".to_string(),
         })
     }
 

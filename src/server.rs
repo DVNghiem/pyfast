@@ -286,6 +286,7 @@ async fn execute_request(
 ) -> ServerResponse {   
     let deps = req.extensions().get::<DependencyInjection>().cloned();
     let mut request = Request::from_request(req).await;
+    let response_builder = ServerResponse::builder();
 
     // Execute before middlewares in parallel where possible
     let before_results = join_all(
@@ -306,10 +307,9 @@ async fn execute_request(
             Ok(MiddlewareReturn::Request(r)) => request = r,
             Ok(MiddlewareReturn::Response(r)) => return r.to_axum_response(extra_headers),
             Err(e) => {
-                return ServerResponse::builder()
-                    .status(StatusCode::INTERNAL_SERVER_ERROR)
-                    .body(Body::from(format!("Error: {}", e)))
-                    .unwrap();
+                return response_builder
+                .body(Body::from(format!("Error: {}", e)))
+                .unwrap();
             }
         }
     }
@@ -333,36 +333,38 @@ async fn execute_request(
     // Execute the main handler
     let mut response = execute_http_function(&request, &function, deps).await.unwrap();
 
-    // Execute after middlewares with similar optimization
-    let after_results = join_all(
-        middlewares
-            .get_after_hooks()
-            .into_iter()
-            .filter(|(_, config)| !config.is_conditional)
-            .map(|(middleware, _)| {
-                let response = response.clone();
-                let middleware = middleware.clone();
-                async move { execute_middleware_function(&response, &middleware).await }
-            })
-    ).await;
+     // mapping context id
+     response.context_id = request.context_id;
 
-    // Process after middleware results
-    for result in after_results {
-        match result {
-            Ok(MiddlewareReturn::Response(r)) => response = r,
+     // mapping neaded header request to response
+     response.headers.set(
+         "accept-encoding".to_string(),
+         request
+             .headers
+             .get("accept-encoding".to_string())
+             .unwrap_or_default(),
+     );
+
+    // Execute after middlewares with similar optimization
+    for (after_middleware, _) in middlewares.get_after_hooks() {
+        response = match execute_middleware_function(&response, &after_middleware).await {
             Ok(MiddlewareReturn::Request(_)) => {
-                return ServerResponse::builder()
+                return response_builder
                     .status(StatusCode::INTERNAL_SERVER_ERROR)
-                    .body(Body::from("Invalid middleware response"))
+                    .body(Body::from("Middleware returned a response"))
                     .unwrap();
             }
+            Ok(MiddlewareReturn::Response(r)) => {
+                let response = r;
+                response
+            }
             Err(e) => {
-                return ServerResponse::builder()
+                return response_builder
                     .status(StatusCode::INTERNAL_SERVER_ERROR)
                     .body(Body::from(e.to_string()))
                     .unwrap();
             }
-        }
+        };
     }
 
     response.to_axum_response(extra_headers)
