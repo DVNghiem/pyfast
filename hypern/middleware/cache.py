@@ -1,8 +1,10 @@
-from typing import Dict, List, Optional
-from datetime import datetime
 import hashlib
+from datetime import datetime, timezone
+from typing import Dict, List, Optional
+
+from hypern.hypern import Header, MiddlewareConfig, Request, Response
+
 from .base import Middleware
-from hypern.hypern import Request, Response, Header, MiddlewareConfig
 
 
 class CacheConfig:
@@ -164,7 +166,7 @@ class EdgeCacheMiddleware(Middleware):
                 "Cache-Control": self._build_cache_control(request.path),
                 "ETag": etag,
                 "Vary": ", ".join(self.cache_config.vary_by),
-                "Last-Modified": datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S GMT"),
+                "Last-Modified": datetime.now(tz=timezone.utc).strftime("%a, %d %b %Y %H:%M:%S GMT"),
             }
         )
 

@@ -4,7 +4,7 @@ import secrets
 import time
 from base64 import b64decode, b64encode
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 import jwt
@@ -78,7 +78,11 @@ class SecurityMiddleware(Middleware):
         if not self.secur_config.jwt_secret:
             raise ValueError("JWT secret key is not configured")
 
-        payload = {"user": user_data, "exp": datetime.utcnow() + timedelta(seconds=self.secur_config.jwt_expires_in), "iat": datetime.utcnow()}
+        payload = {
+            "user": user_data,
+            "exp": datetime.now(tz=timezone.utc) + timedelta(seconds=self.secur_config.jwt_expires_in),
+            "iat": datetime.now(tz=timezone.utc),
+        }
         return jwt.encode(payload, self.secur_config.jwt_secret, algorithm=self.secur_config.jwt_algorithm)
 
     def _verify_jwt_token(self, token: str) -> Dict[str, Any]:

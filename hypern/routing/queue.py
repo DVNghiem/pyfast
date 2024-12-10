@@ -43,6 +43,8 @@ class QueuedHTTPEndpoint(HTTPEndpoint):
         # Metrics
         self._metrics = {"processed_requests": 0, "queued_requests": 0, "rejected_requests": 0, "avg_wait_time": 0.0}
 
+        self._fully_message = "Request queue is full"
+
     async def _initialize(self):
         """Initialize async components when first request arrives"""
         if not self._initialized:
@@ -65,7 +67,7 @@ class QueuedHTTPEndpoint(HTTPEndpoint):
         try:
             if self._request_queue.qsize() >= self._queue_size:
                 self._metrics["rejected_requests"] += 1
-                raise asyncio.QueueFull("Request queue is full")
+                raise asyncio.QueueFull(self._fully_message)
 
             await self._enqueue_request(prioritized_request)
             yield await asyncio.wait_for(request_future, timeout=self._request_timeout)
@@ -84,7 +86,7 @@ class QueuedHTTPEndpoint(HTTPEndpoint):
             self._metrics["queued_requests"] += 1
         except asyncio.QueueFull:
             self._metrics["rejected_requests"] += 1
-            raise asyncio.QueueFull("Request queue is full")
+            raise asyncio.QueueFull(self._fully_message)
 
     async def _process_queue(self):
         """Background task to process queued requests."""
@@ -137,7 +139,7 @@ class QueuedHTTPEndpoint(HTTPEndpoint):
                 return response
 
         except asyncio.QueueFull:
-            return JSONResponse(description={"error": "Server too busy", "message": "Request queue is full", "retry_after": 5}, status_code=503)
+            return JSONResponse(description={"error": "Server too busy", "message": self._fully_message, "retry_after": 5}, status_code=503)
         except asyncio.TimeoutError:
             return JSONResponse(
                 description={
