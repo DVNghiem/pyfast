@@ -30,6 +30,8 @@ pub struct Response {
     #[pyo3(from_py_with = "get_description_from_pyobject")]
     pub description: Vec<u8>,
     pub file_path: Option<String>,
+
+    pub context_id: String,
 }
 
 impl Response {
@@ -38,7 +40,7 @@ impl Response {
         let mut headers = HeaderMap::new();
         for (key, value) in self.headers.headers.clone() {
             let header_name = HeaderName::from_bytes(key.as_bytes()).unwrap();
-            headers.insert(header_name, value.join(" ").parse().unwrap());
+            headers.insert(header_name, value.parse().unwrap());
         }
 
         // Add extra headers
@@ -76,6 +78,7 @@ impl ToPyObject for Response {
             headers,
             description,
             file_path: self.file_path.clone(),
+            context_id: self.context_id.clone(),
         };
         Py::new(py, response).unwrap().as_ref(py).into()
     }
@@ -94,6 +97,9 @@ pub struct PyResponse {
     pub description: Py<PyAny>,
     #[pyo3(get)]
     pub file_path: Option<String>,
+
+    #[pyo3(get)]
+    pub context_id: String,
 }
 
 #[pymethods]
@@ -127,6 +133,7 @@ impl PyResponse {
             headers: headers_output,
             description,
             file_path: None,
+            context_id: "".to_string(),
         })
     }
 
@@ -137,10 +144,12 @@ impl PyResponse {
     }
 
     pub fn set_cookie(&mut self, py: Python, key: &str, value: &str) -> PyResult<()> {
-        self.headers
-            .try_borrow_mut(py)
-            .expect("value already borrowed")
-            .append(key.to_string(), value.to_string());
+        let headers = self.headers.as_ref(py).to_object(py);
+        let key = PyString::new(py, key);
+        let value = PyString::new(py, value);
+        let headers_dict: &PyDict = headers.downcast::<PyDict>(py)?;
+        headers_dict.set_item(key, value)?;
+        self.headers = headers.extract(py)?;
         Ok(())
     }
 }

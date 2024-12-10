@@ -4,23 +4,6 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Tuple
 
 @dataclass
-class BaseBackend:
-    get: Callable[[str], Any]
-    set: Callable[[Any, str, int], None]
-    delete_startswith: Callable[[str], None]
-
-@dataclass
-class RedisBackend(BaseBackend):
-    url: str
-
-    get: Callable[[str], Any]
-    set: Callable[[Any, str, int], None]
-    delete_startswith: Callable[[str], None]
-    set_nx: Callable[[Any, str, int], None]
-    get_ttl: Callable[[str], int]
-    current_timestamp: Callable[[], int]
-
-@dataclass
 class BaseSchemaGenerator:
     remove_converter: Callable[[str], str]
     parse_docstring: Callable[[Callable[..., Any]], str]
@@ -202,6 +185,9 @@ class Server:
     def set_before_hooks(self, hooks: List[FunctionInfo]) -> None: ...
     def set_after_hooks(self, hooks: List[FunctionInfo]) -> None: ...
     def set_response_headers(self, headers: Dict[str, str]) -> None: ...
+    def set_startup_handler(self, on_startup: FunctionInfo) -> None: ...
+    def set_shutdown_handler(self, on_shutdown: FunctionInfo) -> None: ...
+    def set_auto_compression(self, enabled: bool) -> None: ...
 
 class Route:
     path: str
@@ -264,6 +250,7 @@ class Header:
     def set(self, key: str, value: str) -> None: ...
     def append(self, key: str, value: str) -> None: ...
     def update(self, headers: Dict[str, str]) -> None: ...
+    def get_headers(self) -> Dict[str, str]: ...
 
 @dataclass
 class Response:
@@ -271,11 +258,14 @@ class Response:
     response_type: str
     headers: Header
     description: str
-    file_path: str
+    file_path: str | None
+    context_id: str
 
 @dataclass
 class QueryParams:
     queries: Dict[str, List[str]]
+
+    def to_dict(self) -> Dict[str, str]: ...
 
 @dataclass
 class UploadedFile:
@@ -293,6 +283,7 @@ class BodyData:
 
 @dataclass
 class Request:
+    path: str
     query_params: QueryParams
     headers: Header
     path_params: Dict[str, str]
@@ -301,3 +292,14 @@ class Request:
     remote_addr: str
     timestamp: float
     context_id: str
+
+    def json(self) -> Dict[str, Any]: ...
+    def set_body(self, body: BodyData) -> None: ...
+
+@dataclass
+class MiddlewareConfig:
+    priority: int = 0
+    is_conditional: bool = True
+
+    @staticmethod
+    def default(self) -> MiddlewareConfig: ...

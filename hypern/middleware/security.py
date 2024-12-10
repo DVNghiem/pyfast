@@ -4,13 +4,14 @@ import secrets
 import time
 from base64 import b64decode, b64encode
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 import jwt
 
 from hypern.exceptions import Forbidden, Unauthorized
-from hypern.hypern import Middleware, Request, Response
+from hypern.hypern import Request, Response
+from .base import Middleware, MiddlewareConfig
 
 
 @dataclass
@@ -44,16 +45,16 @@ class SecurityConfig:
 
 
 class SecurityMiddleware(Middleware):
-    def __init__(self, config: SecurityConfig):
-        super().__init__()
-        self.config = config
+    def __init__(self, secur_config: SecurityConfig, config: Optional[MiddlewareConfig] = None):
+        super().__init__(config)
+        self.secur_config = secur_config
         self._secret_key = secrets.token_bytes(32)
         self._token_lifetime = 3600
         self._rate_limit_storage = {}
 
     def _rate_limit_check(self, request: Request) -> Optional[Response]:
         """Check if the request exceeds rate limits"""
-        if not self.config.rate_limiting:
+        if not self.secur_config.rate_limiting:
             return None
 
         client_ip = request.client.host
@@ -74,16 +75,20 @@ class SecurityMiddleware(Middleware):
 
     def _generate_jwt_token(self, user_data: Dict[str, Any]) -> str:
         """Generate a JWT token"""
-        if not self.config.jwt_secret:
+        if not self.secur_config.jwt_secret:
             raise ValueError("JWT secret key is not configured")
 
-        payload = {"user": user_data, "exp": datetime.utcnow() + timedelta(seconds=self.config.jwt_expires_in), "iat": datetime.utcnow()}
-        return jwt.encode(payload, self.config.jwt_secret, algorithm=self.config.jwt_algorithm)
+        payload = {
+            "user": user_data,
+            "exp": datetime.now(tz=timezone.utc) + timedelta(seconds=self.secur_config.jwt_expires_in),
+            "iat": datetime.now(tz=timezone.utc),
+        }
+        return jwt.encode(payload, self.secur_config.jwt_secret, algorithm=self.secur_config.jwt_algorithm)
 
     def _verify_jwt_token(self, token: str) -> Dict[str, Any]:
         """Verify JWT token and return payload"""
         try:
-            payload = jwt.decode(token, self.config.jwt_secret, algorithms=[self.config.jwt_algorithm])
+            payload = jwt.decode(token, self.secur_config.jwt_secret, algorithms=[self.secur_config.jwt_algorithm])
             return payload
         except jwt.ExpiredSignatureError:
             raise Unauthorized("Token has expired")
@@ -121,10 +126,10 @@ class SecurityMiddleware(Middleware):
 
     def _apply_cors_headers(self, response: Response) -> None:
         """Apply CORS headers to response"""
-        if not self.config.cors_configuration:
+        if not self.secur_config.cors_configuration:
             return
 
-        cors = self.config.cors_configuration
+        cors = self.secur_config.cors_configuration
         response.headers.update(
             {
                 "Access-Control-Allow-Origin": ", ".join(cors.allowed_origins),
@@ -137,8 +142,8 @@ class SecurityMiddleware(Middleware):
 
     def _apply_security_headers(self, response: Response) -> None:
         """Apply security headers to response"""
-        if self.config.security_headers:
-            response.headers.update(self.config.security_headers)
+        if self.secur_config.security_headers:
+            response.headers.update(self.secur_config.security_headers)
 
     async def before_request(self, request: Request) -> Request | Response:
         """Process request before handling"""
@@ -147,7 +152,7 @@ class SecurityMiddleware(Middleware):
             return rate_limit_response
 
         # JWT authentication check
-        if self.config.jwt_auth:
+        if self.secur_config.jwt_auth:
             auth_header = request.headers.get("Authorization")
             if not auth_header or not auth_header.startswith("Bearer "):
                 raise Unauthorized("Missing or invalid authorization header")
@@ -158,7 +163,7 @@ class SecurityMiddleware(Middleware):
                 return Response(status_code=401, description=str(e))
 
         # CSRF protection check
-        if self.config.csrf_protection and request.method in ["POST", "PUT", "DELETE", "PATCH"]:
+        if self.secur_config.csrf_protection and request.method in ["POST", "PUT", "DELETE", "PATCH"]:
             csrf_token = request.headers.get("X-CSRF-Token")
             if not csrf_token or not self._validate_csrf_token(csrf_token):
                 raise Forbidden("CSRF token missing or invalid")

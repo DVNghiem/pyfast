@@ -8,7 +8,7 @@ import orjson
 from typing_extensions import Annotated, Doc
 
 from hypern.datastructures import Contact, HTTPMethod, Info, License
-from hypern.hypern import FunctionInfo, Router, Route as InternalRoute, WebsocketRouter
+from hypern.hypern import FunctionInfo, Router, Route as InternalRoute, WebsocketRouter, MiddlewareConfig
 from hypern.openapi import SchemaGenerator, SwaggerUI
 from hypern.processpool import run_processes
 from hypern.response import HTMLResponse, JSONResponse
@@ -17,6 +17,7 @@ from hypern.scheduler import Scheduler
 from hypern.middleware import Middleware
 from hypern.args_parser import ArgsConfig
 from hypern.ws import WebsocketRoute
+from hypern.logging import logger
 
 AppType = TypeVar("AppType", bound="Hypern")
 
@@ -190,6 +191,14 @@ class Hypern:
                 """
             ),
         ] = None,
+        auto_compression: Annotated[
+            bool,
+            Doc(
+                """
+                Enable automatic compression of responses.
+                """
+            ),
+        ] = False,
         *args: Any,
         **kwargs: Any,
     ) -> None:
@@ -202,6 +211,9 @@ class Hypern:
         self.middleware_after_request = []
         self.response_headers = {}
         self.args = ArgsConfig()
+        self.start_up_handler = None
+        self.shutdown_handler = None
+        self.auto_compression = auto_compression
 
         for route in routes or []:
             self.router.extend_route(route(app=self).routes)
@@ -287,10 +299,12 @@ class Hypern:
             function: The decorator function that registers the middleware.
         """
 
+        logger.warning("This functin will be deprecated in version 0.4.0. Please use the middleware class instead.")
+
         def decorator(func):
             is_async = asyncio.iscoroutinefunction(func)
             func_info = FunctionInfo(handler=func, is_async=is_async)
-            self.middleware_before_request.append(func_info)
+            self.middleware_before_request.append((func_info, MiddlewareConfig.default()))
             return func
 
         return decorator
@@ -306,11 +320,12 @@ class Hypern:
         Returns:
             function: The decorator function that registers the given function.
         """
+        logger.warning("This functin will be deprecated in version 0.4.0. Please use the middleware class instead.")
 
         def decorator(func):
             is_async = asyncio.iscoroutinefunction(func)
             func_info = FunctionInfo(handler=func, is_async=is_async)
-            self.middleware_after_request.append(func_info)
+            self.middleware_after_request.append((func_info, MiddlewareConfig.default()))
             return func
 
         return decorator
@@ -346,11 +361,13 @@ class Hypern:
         before_request = getattr(middleware, "before_request", None)
         after_request = getattr(middleware, "after_request", None)
 
-        if before_request:
-            self.before_request()(before_request)
-        if after_request:
-            self.after_request()(after_request)
-        return self
+        is_async = asyncio.iscoroutinefunction(before_request)
+        before_request = FunctionInfo(handler=before_request, is_async=is_async)
+        self.middleware_before_request.append((before_request, middleware.config))
+
+        is_async = asyncio.iscoroutinefunction(after_request)
+        after_request = FunctionInfo(handler=after_request, is_async=is_async)
+        self.middleware_after_request.append((after_request, middleware.config))
 
     def start(
         self,
@@ -377,6 +394,9 @@ class Hypern:
             after_request=self.middleware_after_request,
             response_headers=self.response_headers,
             reload=self.args.reload,
+            on_startup=self.start_up_handler,
+            on_shutdown=self.shutdown_handler,
+            auto_compression=self.args.auto_compression or self.auto_compression,
         )
 
     def add_route(self, method: HTTPMethod, endpoint: str, handler: Callable[..., Any]):
@@ -403,3 +423,22 @@ class Hypern:
         """
         for route in ws_route.routes:
             self.websocket_router.add_route(route=route)
+
+    def on_startup(self, handler: Callable[..., Any]):
+        """
+        Registers a function to be executed on application startup.
+
+        Args:
+            handler (Callable[..., Any]): The function to be executed on application startup.
+        """
+        # decorator
+        self.start_up_handler = FunctionInfo(handler=handler, is_async=asyncio.iscoroutinefunction(handler))
+
+    def on_shutdown(self, handler: Callable[..., Any]):
+        """
+        Registers a function to be executed on application shutdown.
+
+        Args:
+            handler (Callable[..., Any]): The function to be executed on application shutdown.
+        """
+        self.shutdown_handler = FunctionInfo(handler=handler, is_async=asyncio.iscoroutinefunction(handler))
