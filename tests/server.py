@@ -17,7 +17,6 @@ class DefaultRoute(HTTPEndpoint):
 
 class RequestFile(HTTPEndpoint):
     def post(self, request: Request):
-        print(request.body.files)
         return Response(
             status_code=200,
             description="multipart form data",
