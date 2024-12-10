@@ -30,6 +30,7 @@ tower-http = { version = "0.6.1", features = ["trace", "compression-full", "deco
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 futures = "0.3.31"
+dashmap = "6.1.0"
 
 [profile.release]
 codegen-units = 1

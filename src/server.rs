@@ -5,6 +5,7 @@ use crate::{
     types::{function_info::FunctionInfo, middleware::MiddlewareReturn, request::Request},
     ws::{router::WebsocketRouter, socket::SocketHeld, websocket::websocket_handler},
 };
+use dashmap::DashMap;
 use futures::future::join_all;
 use pyo3::{exceptions::PyValueError, prelude::*, types::PyDict};
 use std::{
@@ -12,7 +13,7 @@ use std::{
     env,
     sync::{
         atomic::Ordering::{Relaxed, SeqCst},
-        Mutex,
+        RwLock,
     },
     thread,
     time::Duration,
@@ -47,13 +48,13 @@ const DEFAULT_MAX_PAYLOAD_SIZE: usize = 1_000_000; // 1Mb
 
 #[pyclass]
 pub struct Server {
-    router: Arc<Mutex<Router>>,
+    router: Arc<RwLock<Router>>,
     websocket_router: Arc<WebsocketRouter>,
     startup_handler: Option<Arc<FunctionInfo>>,
     shutdown_handler: Option<Arc<FunctionInfo>>,
     injected: DependencyInjection,
     middlewares: Middleware,
-    extra_headers: Arc<Mutex<HashMap<String, String>>>,
+    extra_headers: Arc<DashMap<String, String>>,
     auto_compression: bool,
 }
 
@@ -64,19 +65,19 @@ impl Server {
         let inject = DependencyInjection::new();
         let middlewares = Middleware::new().unwrap();
         Self {
-            router: Arc::new(Mutex::new(Router::default())),
+            router: Arc::new(RwLock::new(Router::default())),
             websocket_router: Arc::new(WebsocketRouter::default()),
             startup_handler: None,
             shutdown_handler: None,
             injected: inject,
             middlewares,
-            extra_headers: Arc::new(HashMap::new().into()),
+            extra_headers: Arc::new(DashMap::new()),
             auto_compression: true,
         }
     }
 
     pub fn set_router(&mut self, router: Router) {
-        self.router = Arc::new(Mutex::new(router));
+        self.router = Arc::new(RwLock::new(router));
     }
 
     pub fn set_websocket_router(&mut self, websocket_router: WebsocketRouter) {
@@ -100,8 +101,9 @@ impl Server {
     }
 
     pub fn set_response_headers(&mut self, headers: HashMap<String, String>) {
-        let mut extra_headers = self.extra_headers.lock().unwrap();
-        *extra_headers = headers;
+        for (key, value) in headers {
+            self.extra_headers.insert(key, value);
+        }
     }
 
     pub fn set_startup_handler(&mut self, handler: FunctionInfo) {
@@ -165,7 +167,7 @@ impl Server {
 
         let inject_copy = self.injected.clone();
         let copy_middlewares = self.middlewares.clone();
-        let extra_headers = self.extra_headers.clone().lock().unwrap().clone();
+        let extra_headers = self.extra_headers.clone();
         let auto_compression = self.auto_compression;
         thread::spawn(move || {
             let rt = tokio::runtime::Builder::new_multi_thread()
@@ -190,7 +192,7 @@ impl Server {
                 let mut app = RouterServer::new();
 
                 // handle logic for each route with pyo3
-                for route in router.lock().unwrap().iter() {
+                for route in router.read().unwrap().iter() {
                     let task_locals = task_locals.clone();
                     let route_copy = route.clone();
                     let function = route_copy.function.clone();
@@ -203,7 +205,7 @@ impl Server {
                             function,
                             task_locals,
                             copy_middlewares_clone.clone(),
-                            extra_headers.clone(),
+                            extra_headers.clone().as_ref().clone(),
                         )
                     };
 
@@ -240,12 +242,11 @@ impl Server {
                 );
                 if auto_compression {
                     // Add compression and decompression layers
-                    app = app
-                        .layer(
-                            ServiceBuilder::new()
-                                .layer(RequestDecompressionLayer::new())
-                                .layer(CompressionLayer::new()),
-                        )
+                    app = app.layer(
+                        ServiceBuilder::new()
+                            .layer(RequestDecompressionLayer::new())
+                            .layer(CompressionLayer::new()),
+                    )
                 }
                 debug!("Application started");
                 // run our app with hyper, listening globally on port 3000
@@ -282,8 +283,8 @@ async fn execute_request(
     req: HttpRequest<Body>,
     function: FunctionInfo,
     middlewares: Middleware,
-    extra_headers: HashMap<String, String>,
-) -> ServerResponse {   
+    extra_headers: DashMap<String, String>,
+) -> ServerResponse {
     let deps = req.extensions().get::<DependencyInjection>().cloned();
     let mut request = Request::from_request(req).await;
     let response_builder = ServerResponse::builder();
@@ -298,8 +299,9 @@ async fn execute_request(
                 let request = request.clone();
                 let middleware = middleware.clone();
                 async move { execute_middleware_function(&request, &middleware).await }
-            })
-    ).await;
+            }),
+    )
+    .await;
 
     // Process results and handle any errors
     for result in before_results {
@@ -308,8 +310,8 @@ async fn execute_request(
             Ok(MiddlewareReturn::Response(r)) => return r.to_axum_response(extra_headers),
             Err(e) => {
                 return response_builder
-                .body(Body::from(format!("Error: {}", e)))
-                .unwrap();
+                    .body(Body::from(format!("Error: {}", e)))
+                    .unwrap();
             }
         }
     }
@@ -331,19 +333,21 @@ async fn execute_request(
     }
 
     // Execute the main handler
-    let mut response = execute_http_function(&request, &function, deps).await.unwrap();
+    let mut response = execute_http_function(&request, &function, deps)
+        .await
+        .unwrap();
 
-     // mapping context id
-     response.context_id = request.context_id;
+    // mapping context id
+    response.context_id = request.context_id;
 
-     // mapping neaded header request to response
-     response.headers.set(
-         "accept-encoding".to_string(),
-         request
-             .headers
-             .get("accept-encoding".to_string())
-             .unwrap_or_default(),
-     );
+    // mapping neaded header request to response
+    response.headers.set(
+        "accept-encoding".to_string(),
+        request
+            .headers
+            .get("accept-encoding".to_string())
+            .unwrap_or_default(),
+    );
 
     // Execute after middlewares with similar optimization
     for (after_middleware, _) in middlewares.get_after_hooks() {
@@ -375,7 +379,7 @@ async fn mapping_method(
     function: FunctionInfo,
     task_locals: pyo3_asyncio::TaskLocals,
     middlewares: Middleware,
-    extra_headers: HashMap<String, String>,
+    extra_headers: DashMap<String, String>,
 ) -> impl IntoResponse {
     pyo3_asyncio::tokio::scope(
         task_locals,
