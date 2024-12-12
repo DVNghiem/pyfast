@@ -54,7 +54,7 @@ impl DatabaseConnection {
                     .map_err(|e| SqlxError::Configuration(e.to_string().into()));
                 DatabaseTransaction::from_transaction(DatabaseTransactionType::Postgres(
                     PostgresDatabase,
-                    Arc::new(Mutex::new(transaction.unwrap())),
+                    Arc::new(Mutex::new(Some(transaction.unwrap()))),
                 ))
             }
             DatabaseType::MySql(pool) => {
@@ -64,7 +64,7 @@ impl DatabaseConnection {
                     .map_err(|e| SqlxError::Configuration(e.to_string().into()));
                 DatabaseTransaction::from_transaction(DatabaseTransactionType::MySql(
                     MySqlDatabase,
-                    Arc::new(Mutex::new(transaction.unwrap())),
+                    Arc::new(Mutex::new(Some(transaction.unwrap()))),
                 ))
             }
             DatabaseType::SQLite(pool) => {
@@ -74,7 +74,7 @@ impl DatabaseConnection {
                     .map_err(|e| SqlxError::Configuration(e.to_string().into()));
                 DatabaseTransaction::from_transaction(DatabaseTransactionType::SQLite(
                     SqliteDatabase,
-                    Arc::new(Mutex::new(transaction.unwrap())),
+                    Arc::new(Mutex::new(Some(transaction.unwrap()))),
                 ))
             }
         }
