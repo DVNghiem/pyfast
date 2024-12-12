@@ -95,3 +95,7 @@ class Unauthorized(BaseException):
 
 class InvalidPortNumber(Exception):
     pass
+
+
+class OutOfScopeApplicationException(Exception):
+    pass

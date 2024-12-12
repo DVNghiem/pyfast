@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Tuple
+from enum import Enum
 
 @dataclass
 class BaseSchemaGenerator:
@@ -188,6 +189,7 @@ class Server:
     def set_startup_handler(self, on_startup: FunctionInfo) -> None: ...
     def set_shutdown_handler(self, on_shutdown: FunctionInfo) -> None: ...
     def set_auto_compression(self, enabled: bool) -> None: ...
+    def set_database_config(self, config: DatabaseConfig) -> None: ...
 
 class Route:
     path: str
@@ -303,3 +305,31 @@ class MiddlewareConfig:
 
     @staticmethod
     def default(self) -> MiddlewareConfig: ...
+
+class DatabaseType(Enum):
+    Postgres: str
+    MySQL: str
+    SQLite: str
+
+@dataclass
+class DatabaseConfig:
+    driver: DatabaseType
+    url: str
+    max_connections: int = 10
+    min_connections: int = 1
+    idle_timeout: int = 30
+
+    options: Dict[str, Any] = {}
+
+@dataclass
+class DatabaseTransaction:
+    def execute(self, query: str, params: List[Any]) -> int: ...
+    def fetch_all(self, query: str, params: List[Any]) -> List[Dict[str, Any]]: ...
+    def stream_data(self, query: str, params: List[Any], chunk_size: int) -> Dict[str, Any]: ...
+    def commit(self) -> None: ...
+    def rollback(self) -> None: ...
+    def __del__(self) -> None: ...
+    def __enter__(self) -> None: ...
+    def __exit__(self, _exc_type, _exc_value, _traceback) -> None: ...
+
+def get_session_database(context_id: str) -> DatabaseTransaction: ...

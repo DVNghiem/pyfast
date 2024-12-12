@@ -7,9 +7,17 @@ from typing import Any, Dict, List
 from multiprocess import Process
 from watchdog.observers import Observer
 
-from .hypern import FunctionInfo, Router, Server, SocketHeld, WebsocketRouter
+from .hypern import FunctionInfo, Router, Server, SocketHeld, WebsocketRouter, DatabaseConfig, DatabaseType
 from .logging import logger
 from .reload import EventHandler
+
+db_config = DatabaseConfig(
+    driver=DatabaseType.Postgres,
+    url="postgresql://nghiem:nghiem@localhost:5432/mms_stag",
+    max_connections=20,
+    min_connections=10,
+    idle_timeout=30,
+)
 
 
 def run_processes(
@@ -163,6 +171,7 @@ def spawn_process(
     server.set_after_hooks(hooks=after_request)
     server.set_response_headers(headers=response_headers)
     server.set_auto_compression(enabled=auto_compression)
+    server.set_database_config(config=db_config)
 
     if on_startup:
         server.set_startup_handler(on_startup)

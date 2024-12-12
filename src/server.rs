@@ -1,4 +1,8 @@
 use crate::{
+    database::{
+        context::{insert_sql_session, remove_sql_session},
+        sql::{config::DatabaseConfig, connection::DatabaseConnection},
+    },
     executor::{execute_http_function, execute_middleware_function, execute_startup_handler},
     middlewares::base::{Middleware, MiddlewareConfig},
     router::router::Router,
@@ -56,6 +60,7 @@ pub struct Server {
     middlewares: Middleware,
     extra_headers: Arc<DashMap<String, String>>,
     auto_compression: bool,
+    database_config: Option<DatabaseConfig>,
 }
 
 #[pymethods]
@@ -73,6 +78,7 @@ impl Server {
             middlewares,
             extra_headers: Arc::new(DashMap::new()),
             auto_compression: true,
+            database_config: None,
         }
     }
 
@@ -118,6 +124,10 @@ impl Server {
         self.auto_compression = enabled;
     }
 
+    pub fn set_database_config(&mut self, config: DatabaseConfig) {
+        self.database_config = Some(config);
+    }
+
     pub fn start(
         &mut self,
         py: Python,
@@ -155,7 +165,7 @@ impl Server {
         let task_locals = pyo3_asyncio::TaskLocals::new(event_loop).copy_context(py)?;
         let task_locals_copy = task_locals.clone();
 
-        let _max_payload_size = env::var(MAX_PAYLOAD_SIZE)
+        let _max_payload_size: usize = env::var(MAX_PAYLOAD_SIZE)
             .unwrap_or(DEFAULT_MAX_PAYLOAD_SIZE.to_string())
             .trim()
             .parse::<usize>()
@@ -165,10 +175,11 @@ impl Server {
                 ))
             })?;
 
-        let inject_copy = self.injected.clone();
+        let injected = self.injected.clone();
         let copy_middlewares = self.middlewares.clone();
         let extra_headers = self.extra_headers.clone();
         let auto_compression = self.auto_compression;
+        let database_config = self.database_config.clone();
         thread::spawn(move || {
             let rt = tokio::runtime::Builder::new_multi_thread()
                 .worker_threads(workers)
@@ -185,26 +196,24 @@ impl Server {
             debug!("Waiting for process to start...");
 
             rt.block_on(async move {
-                let task_locals_copy = task_locals_copy.clone();
                 let _ = execute_startup_handler(startup_handler, &task_locals_copy).await;
 
-                let task_locals = task_locals_copy.clone();
                 let mut app = RouterServer::new();
 
                 // handle logic for each route with pyo3
                 for route in router.read().unwrap().iter() {
-                    let task_locals = task_locals.clone();
+                    let task_locals_copy = task_locals_copy.clone();
                     let route_copy = route.clone();
                     let function = route_copy.function.clone();
 
-                    let copy_middlewares_clone = copy_middlewares.clone();
+                    let copy_middlewares = copy_middlewares.clone();
                     let extra_headers = extra_headers.clone();
                     let handler = move |req| {
                         mapping_method(
                             req,
                             function,
-                            task_locals,
-                            copy_middlewares_clone.clone(),
+                            task_locals_copy,
+                            copy_middlewares.clone(),
                             extra_headers.clone().as_ref().clone(),
                         )
                     };
@@ -232,7 +241,12 @@ impl Server {
                     app = app.route(&ws_route.path, any(handler));
                 }
 
-                app = app.layer(Extension(inject_copy.clone()));
+                app = match database_config {
+                    Some(config) => app.layer(Extension(DatabaseConnection::new(config).await)),
+                    None => app,
+                };
+
+                app = app.layer(Extension(injected));
                 app = app.layer(
                     TraceLayer::new_for_http().on_response(
                         DefaultOnResponse::new()
@@ -285,9 +299,20 @@ async fn execute_request(
     middlewares: Middleware,
     extra_headers: DashMap<String, String>,
 ) -> ServerResponse {
-    let deps = req.extensions().get::<DependencyInjection>().cloned();
-    let mut request = Request::from_request(req).await;
     let response_builder = ServerResponse::builder();
+
+    let deps = req.extensions().get::<DependencyInjection>().cloned();
+    let database = req.extensions().get::<DatabaseConnection>().cloned();
+
+    let mut request = Request::from_request(req).await;
+
+    // inject session db to global
+    match database.clone() {
+        Some(database) => {
+            insert_sql_session(&request.context_id, database.transaction().await);
+        }
+        None => {}
+    }
 
     // Execute before middlewares in parallel where possible
     let before_results = join_all(
@@ -369,6 +394,10 @@ async fn execute_request(
                     .unwrap();
             }
         };
+    }
+    // clean up session db
+    if !database.is_none(){
+        remove_sql_session(&response.context_id);
     }
 
     response.to_axum_response(extra_headers)
