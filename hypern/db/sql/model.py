@@ -1,11 +1,12 @@
 import re
 from datetime import date, datetime
 
-from .field import Field, ForeignKey
-from .query import QuerySet
 from hypern.config import context_store
 from hypern.exceptions import OutOfScopeApplicationException
 from hypern.hypern import get_session_database
+
+from .field import Field, ForeignKey
+from .query import QuerySet
 
 
 class MetaModel(type):

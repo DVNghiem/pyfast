@@ -99,3 +99,9 @@ class InvalidPortNumber(Exception):
 
 class OutOfScopeApplicationException(Exception):
     pass
+
+
+class DBFieldValidationError(ValueError):
+    """Custom exception for field validation errors."""
+
+    pass

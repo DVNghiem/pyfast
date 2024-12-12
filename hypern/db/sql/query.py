@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any, List, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union
 
 
 class JoinType(Enum):
@@ -379,31 +379,36 @@ class QuerySet:
         qs._distinct = distinct
         return qs
 
-    def _process_q_object(self, q_obj: Q, params: List) -> Tuple[str, List]:
+    def _process_q_object(self, q_obj: Q, params: List = None) -> Tuple[str, List]:
+        if params is None:
+            params = []
+
         if not q_obj.children:
-            return "", []
+            return "", params
 
         sql_parts = []
+        local_params = []
 
         for child in q_obj.children:
             if isinstance(child, Q):
-                inner_sql, inner_params = self._process_q_object(child, params)
+                inner_sql, inner_params = self._process_q_object(child)
                 sql_parts.append(f"({inner_sql})")
-                params.extend(inner_params)
+                local_params.extend(inner_params)
             elif isinstance(child, dict):
                 for key, value in child.items():
                     field_sql, field_params = self._process_where_item(key, value)
                     sql_parts.append(field_sql)
-                    params.extend(field_params)
+                    local_params.extend(field_params)
             elif isinstance(child, tuple):
                 field_sql, field_params = self._process_where_item(child[0], child[1])
                 sql_parts.append(field_sql)
-                params.extend(field_params)
+                local_params.extend(field_params)
 
         joined = f" {q_obj.connector} ".join(sql_parts)
         if q_obj.negated:
             joined = f"NOT ({joined})"
 
+        params.extend(local_params)
         return joined, params
 
     def _process_where_item(self, key: str, value: Any) -> Tuple[str, List]:
@@ -822,7 +827,7 @@ class QuerySet:
         if where_sql:
             sql += f" WHERE {where_sql}"
 
-        result = self.model.get_session().fetch_all(sql, params + self.params)
+        result = self.model.get_session().execute(sql, params + self.params)
         return result
 
     def delete(self) -> int:
@@ -833,7 +838,7 @@ class QuerySet:
         if where_sql:
             sql += f" WHERE {where_sql}"
 
-        result = self.model.get_session().fetch_all(sql, [])
+        result = self.model.get_session().execute(sql, [])
         return result
 
     def bulk_create(self, objs: List[Any], batch_size: int = None) -> None:
@@ -842,7 +847,7 @@ class QuerySet:
             return
 
         # Get fields from the first object
-        fields = [f.name for f in self.model.Meta.fields if not f.auto_increment]
+        fields = [name for name, f in self.model._fields.items() if not f.auto_increment]
         placeholders = ",".join([self.__get_next_param() for _ in fields])
 
         sql = f"INSERT INTO {self.model.Meta.table_name} ({','.join(fields)}) VALUES ({placeholders})"
@@ -851,14 +856,13 @@ class QuerySet:
         for obj in objs:
             row = [getattr(obj, field) for field in fields]
             values.append(row)
-
-        with self.model.Meta.database.cursor() as cursor:
-            if batch_size:
-                for i in range(0, len(values), batch_size):
-                    batch = values[i : i + batch_size]
-                    cursor.executemany(sql, batch)
-            else:
-                cursor.executemany(sql, values)
+        print(sql, values, "====")
+        if batch_size:
+            for i in range(0, len(values), batch_size):
+                batch = values[i : i + batch_size]
+                self.model.get_session().execute(sql, batch)
+        else:
+            self.model.get_session().execute(sql, values)
 
     def bulk_update(self, objs: List[Any], fields: List[str], batch_size: int = None) -> None:
         """Update multiple records in an efficient way"""
@@ -876,15 +880,14 @@ class QuerySet:
             row.append(obj.id)  # Add ID for WHERE clause
             values.append(row)
 
-        with self.model.Meta.database.cursor() as cursor:
-            if batch_size:
-                for i in range(0, len(values), batch_size):
-                    batch = values[i : i + batch_size]
-                    cursor.executemany(sql, batch)
-            else:
-                cursor.executemany(sql, values)
+        if batch_size:
+            for i in range(0, len(values), batch_size):
+                batch = values[i : i + batch_size]
+                self.model.get_session().execute(sql, batch)
+        else:
+            self.model.get_session().execute(sql, values)
 
-    def explain(self, analyze: bool = False, verbose: bool = False, costs: bool = False, buffers: bool = False, timing: bool = False) -> str:
+    def explain(self, analyze: bool = False, verbose: bool = False, costs: bool = False, buffers: bool = False, timing: bool = False) -> Dict:
         """Get the query execution plan"""
         options = []
         if analyze:
@@ -901,6 +904,5 @@ class QuerySet:
         sql, params = self.to_sql()
         explain_sql = f"EXPLAIN ({' '.join(options)}) {sql}"
 
-        with self.model.Meta.database.cursor() as cursor:
-            cursor.execute(explain_sql, params)
-            return "\n".join(row[0] for row in cursor.fetchall())
+        result = self.model.get_session().fetch_all(explain_sql, params)
+        return result
