@@ -1,6 +1,6 @@
 use crate::{
     database::{
-        context::{insert_sql_session, remove_sql_session},
+        context::{get_sql_connect, insert_sql_session, remove_sql_session, set_sql_connect},
         sql::{config::DatabaseConfig, connection::DatabaseConnection},
     },
     executor::{execute_http_function, execute_middleware_function, execute_startup_handler},
@@ -241,9 +241,12 @@ impl Server {
                     app = app.route(&ws_route.path, any(handler));
                 }
 
-                app = match database_config {
-                    Some(config) => app.layer(Extension(DatabaseConnection::new(config).await)),
-                    None => app,
+                match database_config {
+                    Some(config) => {
+                        let database = DatabaseConnection::new(config).await;
+                        set_sql_connect(database);
+                    }
+                    None => {}
                 };
 
                 app = app.layer(Extension(injected));
@@ -302,7 +305,7 @@ async fn execute_request(
     let response_builder = ServerResponse::builder();
 
     let deps = req.extensions().get::<DependencyInjection>().cloned();
-    let database = req.extensions().get::<DatabaseConnection>().cloned();
+    let database = get_sql_connect();
 
     let mut request = Request::from_request(req).await;
 
@@ -396,7 +399,7 @@ async fn execute_request(
         };
     }
     // clean up session db
-    if !database.is_none(){
+    if !database.is_none() {
         remove_sql_session(&response.context_id);
     }
 
