@@ -1,11 +1,13 @@
 use pyo3::prelude::*;
-use std::{clone, sync::Arc};
+use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use crate::database::context::get_sql_connect;
 
 use super::{
-    db_trait::DatabaseOperations, mysql::MySqlDatabase, postgresql::PostgresDatabase,
+    db_trait::DatabaseOperations,
+    postgresql::PostgresDatabase,
+    mysql::MySqlDatabase,
     sqlite::SqliteDatabase,
 };
 
@@ -45,6 +47,18 @@ impl DatabaseTransaction {
         let mut guard = transaction.lock().await;
         let transaction = guard.take().unwrap();
         transaction.commit().await.ok();
+
+        match get_sql_connect() {
+            Some(connection) => {
+                let transaction = connection.begin_transaction().await;
+                let pg = transaction
+                    .unwrap()
+                    .downcast::<sqlx::Transaction<'static, T>>()
+                    .unwrap();
+                guard.replace(*pg);
+            }
+            None => {}
+        }
     }
 
     pub async fn rollback_internal<T>(
@@ -56,17 +70,6 @@ impl DatabaseTransaction {
         let mut guard = transaction.lock().await;
         let transaction = guard.take().unwrap();
         transaction.rollback().await.ok();
-    }
-
-    pub async fn renew(&mut self) {
-        match get_sql_connect() {
-            Some(connection) => {
-                let cloned = connection.transaction().await;
-                self.transaction = cloned.transaction;
-            }
-            None => {}
-        }
-        println!("====> {:?}", self);
     }
 }
 
@@ -127,15 +130,15 @@ impl DatabaseTransaction {
                 DatabaseTransactionType::Postgres(mut db, transaction) => {
                     db.stream_data(py, transaction, query, params, chunk_size)
                         .await
-                }
+                } 
                 DatabaseTransactionType::MySql(mut db, transaction) => {
-                    db.stream_data(py, transaction, query, params, chunk_size)
-                        .await
-                }
-                DatabaseTransactionType::SQLite(mut db, transaction) => {
-                    db.stream_data(py, transaction, query, params, chunk_size)
-                        .await
-                }
+                      db.stream_data(py, transaction, query, params, chunk_size)
+                          .await
+                  }
+                  DatabaseTransactionType::SQLite(mut db, transaction) => {
+                      db.stream_data(py, transaction, query, params, chunk_size)
+                          .await
+                  }
             }
         })?;
 
@@ -147,15 +150,14 @@ impl DatabaseTransaction {
             match self.transaction.clone() {
                 DatabaseTransactionType::Postgres(_, transaction) => {
                     self.commit_internal(transaction).await
-                }
+                } 
                 DatabaseTransactionType::MySql(_, transaction) => {
-                    self.commit_internal(transaction).await
-                }
-                DatabaseTransactionType::SQLite(_, transaction) => {
-                    self.commit_internal(transaction).await
-                }
+                      self.commit_internal(transaction).await
+                  }
+                  DatabaseTransactionType::SQLite(_, transaction) => {
+                      self.commit_internal(transaction).await
+                  }
             };
-            self.renew().await;
         });
 
         Ok(())

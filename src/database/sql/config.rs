@@ -13,8 +13,8 @@ use tracing::log::LevelFilter;
 #[pyclass]
 pub enum DatabaseType {
     Postgres,
-    MySQL,
-    SQLite,
+    Mysql,
+    Sqlite,
 }
 
 impl Default for DatabaseType {
@@ -112,11 +112,11 @@ impl DatabaseConfig {
                 let pool = self.create_postgres_pool().await?;
                 Ok(Box::new(pool))
             }
-            DatabaseType::MySQL => {
+            DatabaseType::Mysql => {
                 let pool = self.create_mysql_pool().await?;
                 Ok(Box::new(pool))
             }
-            DatabaseType::SQLite => {
+            DatabaseType::Sqlite => {
                 let pool = self.create_sqlite_pool().await?;
                 Ok(Box::new(pool))
             }
