@@ -1,8 +1,12 @@
 use std::sync::Arc;
+use regex::Regex;
 use tokio::sync::Mutex;
 
 use futures::StreamExt;
-use pyo3::{prelude::*, types::PyDict};
+use pyo3::{
+    prelude::*,
+    types::PyDict,
+};
 use sqlx::{
     mysql::{MySqlArguments, MySqlRow},
     Column, Row, ValueRef,
@@ -17,15 +21,42 @@ impl DynamicParameterBinder for MySqlParameterBinder {
     type Database = sqlx::MySql;
     type Row = MySqlRow;
 
+    fn convert_sql_params<'q>(
+        &self,
+        query: &str,
+        params: Vec<&'q PyAny>,
+    ) -> Result<(String, Vec<&'q PyAny>), PyErr> {
+        let re = Regex::new(r"\$(\d+)").unwrap();
+
+        let params_extracted: Vec<String> = re
+            .find_iter(query)
+            .filter_map(|mat| Some(mat.as_str().to_string()))
+            .collect();
+
+        let mut converted_query = query.to_string();
+        let mut param_values: Vec<&PyAny> = Vec::new();
+
+        for p in params_extracted {
+            converted_query = converted_query.replace(&p, "?");
+            let index = p[1..].parse::<usize>().unwrap();
+            param_values.push(params[index - 1]);
+        }
+
+        Ok((converted_query, param_values))
+    }
+
     fn bind_parameters<'q>(
         &self,
-        mut query_builder: sqlx::query::Query<'q, Self::Database, Self::Arguments>,
+        query: &'q str,
         params: Vec<&PyAny>,
     ) -> Result<sqlx::query::Query<'q, Self::Database, Self::Arguments>, PyErr> {
         // Create query with explicit lifetime
+        let (query_converted, params_converted) = self.convert_sql_params(query, params).unwrap();
+        let query_converted = String::leak(query_converted);
+        let mut query_builder = sqlx::query::<Self::Database>(query_converted);
 
         // Bind parameters with lifetime preservation
-        for param in params {
+        for param in params_converted {
             query_builder = match param.extract::<String>() {
                 // Use String instead of &str
                 Ok(s) => query_builder.bind(s),
@@ -45,7 +76,6 @@ impl DynamicParameterBinder for MySqlParameterBinder {
                 },
             };
         }
-
         Ok(query_builder)
     }
 
@@ -96,11 +126,11 @@ impl DatabaseOperations for MySqlDatabase {
         query: &str,
         params: Vec<&PyAny>,
     ) -> Result<u64, PyErr> {
-        let query = sqlx::query(query);
         let query_builder = MySqlParameterBinder.bind_parameters(query, params)?;
-        let mut guard = transaction.lock().await.take().unwrap();
+        let mut guard = transaction.lock().await;
+        let transaction = guard.as_mut().unwrap();
         let result = query_builder
-            .execute(&mut *guard)
+            .execute(&mut **transaction)
             .await
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
 
@@ -114,9 +144,8 @@ impl DatabaseOperations for MySqlDatabase {
         query: &str,
         params: Vec<&PyAny>,
     ) -> Result<Vec<PyObject>, PyErr> {
-        let query = sqlx::query(query);
         let query_builder = MySqlParameterBinder.bind_parameters(query, params)?;
-        let mut guard  = transaction.lock().await;
+        let mut guard = transaction.lock().await;
         let transaction = guard.as_mut().unwrap();
         let rows = query_builder
             .fetch_all(&mut **transaction)
@@ -139,7 +168,6 @@ impl DatabaseOperations for MySqlDatabase {
         params: Vec<&PyAny>,
         chunk_size: usize,
     ) -> PyResult<Vec<Vec<PyObject>>> {
-        let query = sqlx::query(query);
         let query_builder = MySqlParameterBinder.bind_parameters(query, params)?;
         let mut guard = transaction.lock().await.take().unwrap();
         let mut stream = query_builder.fetch(&mut *guard);
@@ -188,11 +216,9 @@ impl DatabaseOperations for MySqlDatabase {
         for chunk in params.chunks(batch_size) {
             for param_set in chunk {
                 // Build query with current parameters
-                let mut query_builder = sqlx::query(query);
-                for param in param_set {
-                    query_builder =
-                        MySqlParameterBinder.bind_parameters(query_builder, vec![*param])?;
-                }
+                let query_builder =
+                    MySqlParameterBinder.bind_parameters(query, param_set.to_vec())?;
+
                 // Execute query and accumulate affected rows
                 let result = query_builder.execute(&mut **tx).await.map_err(|e| {
                     PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string())

@@ -103,22 +103,22 @@ class F:
     def __add__(self, other):
         if isinstance(other, F):
             return Expression(f"{self.field} + {other.field}", [])
-        return Expression(f"{self.field} + $1", [other])
+        return Expression(f"{self.field} + ?", [other])
 
     def __sub__(self, other):
         if isinstance(other, F):
             return Expression(f"{self.field} - {other.field}", [])
-        return Expression(f"{self.field} - $1", [other])
+        return Expression(f"{self.field} - ?", [other])
 
     def __mul__(self, other):
         if isinstance(other, F):
             return Expression(f"{self.field} * {other.field}", [])
-        return Expression(f"{self.field} * $1", [other])
+        return Expression(f"{self.field} * ?", [other])
 
     def __truediv__(self, other):
         if isinstance(other, F):
             return Expression(f"{self.field} / {other.field}", [])
-        return Expression(f"{self.field} / $1", [other])
+        return Expression(f"{self.field} / ?", [other])
 
     # Window function methods
     def sum(self):
@@ -145,13 +145,13 @@ class F:
         """LAG window function"""
         if default is None:
             return Expression(f"LAG({self.field}, {offset})", [])
-        return Expression(f"LAG({self.field}, {offset}, $1)", [default])
+        return Expression(f"LAG({self.field}, {offset}, ?)", [default])
 
     def lead(self, offset=1, default=None):
         """LEAD window function"""
         if default is None:
             return Expression(f"LEAD({self.field}, {offset})", [])
-        return Expression(f"LEAD({self.field}, {offset}, $1)", [default])
+        return Expression(f"LEAD({self.field}, {offset}, ?)", [default])
 
     def row_number(self):
         """ROW_NUMBER window function"""
@@ -371,6 +371,7 @@ class QuerySet:
         new_qs._for_share = self._for_share
         new_qs._nowait = self._nowait
         new_qs._skip_locked = self._skip_locked
+        new_qs._param_counter = self._param_counter
         return new_qs
 
     def select(self, *fields, distinct: bool = False) -> "QuerySet":
@@ -505,7 +506,7 @@ class QuerySet:
             if isinstance(expression, F):
                 select_parts.append(f"{expression.field} AS {alias}")
             elif isinstance(expression, Expression):
-                select_parts.append(f"({expression.sql}) AS {alias}")
+                select_parts.append(f"({expression.sql.replace('?', qs.__get_next_param())}) AS {alias}")
                 qs.params.extend(expression.params)
             else:
                 select_parts.append(f"{expression} AS {alias}")

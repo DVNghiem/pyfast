@@ -26,11 +26,24 @@ impl DynamicParameterBinder for PostgresParameterBinder {
     type Database = sqlx::Postgres;
     type Row = PgRow;
 
+
+    fn convert_sql_params<'q>(
+        &self,
+        _query: &str,
+        _params: Vec<&'q PyAny>,
+    ) -> Result<(String, Vec<&'q PyAny>), PyErr> {
+        todo!()
+    }
+
+
     fn bind_parameters<'q>(
         &self,
-        mut query_builder: sqlx::query::Query<'q, Self::Database, PgArguments>,
+        query: &'q str,
         params: Vec<&PyAny>,
     ) -> Result<sqlx::query::Query<'q, Self::Database, PgArguments>, PyErr> {
+
+        let mut query_builder = sqlx::query(query);
+
         for param in params {
             query_builder = match param {
                 // Primitive Types
@@ -217,11 +230,11 @@ impl DatabaseOperations for PostgresDatabase {
         query: &str,
         params: Vec<&PyAny>,
     ) -> Result<u64, PyErr> {
-        let query = sqlx::query(query);
         let query_builder = PostgresParameterBinder.bind_parameters(query, params)?;
-        let mut guard = transaction.lock().await.take().unwrap();
+        let mut guard = transaction.lock().await;
+        let transaction = guard.as_mut().unwrap();
         let result = query_builder
-            .execute(&mut *guard)
+            .execute(&mut **transaction)
             .await
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
 
@@ -237,7 +250,6 @@ impl DatabaseOperations for PostgresDatabase {
         params: Vec<&PyAny>,
     ) -> Result<Vec<PyObject>, PyErr> {
 
-        let query = sqlx::query(query);
         let query_builder = PostgresParameterBinder.bind_parameters(query, params)?;
         let mut guard = transaction.lock().await;
         let transaction = guard.as_mut().unwrap();
@@ -261,7 +273,6 @@ impl DatabaseOperations for PostgresDatabase {
         params: Vec<&PyAny>,
         chunk_size: usize,
     ) -> PyResult<Vec<Vec<PyObject>>> {
-        let query = sqlx::query(query);
         let query_builder = PostgresParameterBinder.bind_parameters(query, params)?;
         let mut guard = transaction.lock().await.take().unwrap();
         let mut stream = query_builder.fetch(&mut *guard);
@@ -310,11 +321,7 @@ impl DatabaseOperations for PostgresDatabase {
         for chunk in params.chunks(batch_size) {
             for param_set in chunk {
                 // Build query with current parameters
-                let mut query_builder = sqlx::query(query);
-                for param in param_set {
-                    query_builder =
-                        PostgresParameterBinder.bind_parameters(query_builder, vec![*param])?;
-                }
+                let query_builder = PostgresParameterBinder.bind_parameters(query, param_set.to_vec())?;
                 // Execute query and accumulate affected rows
                 let result = query_builder.execute(&mut **tx).await.map_err(|e| {
                     PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string())
