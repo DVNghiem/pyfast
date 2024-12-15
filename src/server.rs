@@ -1,10 +1,15 @@
 use crate::{
+    database::{
+        context::{get_session_database, get_sql_connect, insert_sql_session, remove_sql_session, set_sql_connect},
+        sql::{config::DatabaseConfig, connection::DatabaseConnection},
+    },
     executor::{execute_http_function, execute_middleware_function, execute_startup_handler},
     middlewares::base::{Middleware, MiddlewareConfig},
     router::router::Router,
     types::{function_info::FunctionInfo, middleware::MiddlewareReturn, request::Request},
     ws::{router::WebsocketRouter, socket::SocketHeld, websocket::websocket_handler},
 };
+use dashmap::DashMap;
 use futures::future::join_all;
 use pyo3::{exceptions::PyValueError, prelude::*, types::PyDict};
 use std::{
@@ -12,7 +17,7 @@ use std::{
     env,
     sync::{
         atomic::Ordering::{Relaxed, SeqCst},
-        Mutex,
+        RwLock,
     },
     thread,
     time::Duration,
@@ -47,14 +52,15 @@ const DEFAULT_MAX_PAYLOAD_SIZE: usize = 1_000_000; // 1Mb
 
 #[pyclass]
 pub struct Server {
-    router: Arc<Mutex<Router>>,
+    router: Arc<RwLock<Router>>,
     websocket_router: Arc<WebsocketRouter>,
     startup_handler: Option<Arc<FunctionInfo>>,
     shutdown_handler: Option<Arc<FunctionInfo>>,
     injected: DependencyInjection,
     middlewares: Middleware,
-    extra_headers: Arc<Mutex<HashMap<String, String>>>,
+    extra_headers: Arc<DashMap<String, String>>,
     auto_compression: bool,
+    database_config: Option<DatabaseConfig>,
 }
 
 #[pymethods]
@@ -64,19 +70,20 @@ impl Server {
         let inject = DependencyInjection::new();
         let middlewares = Middleware::new().unwrap();
         Self {
-            router: Arc::new(Mutex::new(Router::default())),
+            router: Arc::new(RwLock::new(Router::default())),
             websocket_router: Arc::new(WebsocketRouter::default()),
             startup_handler: None,
             shutdown_handler: None,
             injected: inject,
             middlewares,
-            extra_headers: Arc::new(HashMap::new().into()),
+            extra_headers: Arc::new(DashMap::new()),
             auto_compression: true,
+            database_config: None,
         }
     }
 
     pub fn set_router(&mut self, router: Router) {
-        self.router = Arc::new(Mutex::new(router));
+        self.router = Arc::new(RwLock::new(router));
     }
 
     pub fn set_websocket_router(&mut self, websocket_router: WebsocketRouter) {
@@ -100,8 +107,9 @@ impl Server {
     }
 
     pub fn set_response_headers(&mut self, headers: HashMap<String, String>) {
-        let mut extra_headers = self.extra_headers.lock().unwrap();
-        *extra_headers = headers;
+        for (key, value) in headers {
+            self.extra_headers.insert(key, value);
+        }
     }
 
     pub fn set_startup_handler(&mut self, handler: FunctionInfo) {
@@ -114,6 +122,10 @@ impl Server {
 
     pub fn set_auto_compression(&mut self, enabled: bool) {
         self.auto_compression = enabled;
+    }
+
+    pub fn set_database_config(&mut self, config: DatabaseConfig) {
+        self.database_config = Some(config);
     }
 
     pub fn start(
@@ -153,7 +165,7 @@ impl Server {
         let task_locals = pyo3_asyncio::TaskLocals::new(event_loop).copy_context(py)?;
         let task_locals_copy = task_locals.clone();
 
-        let _max_payload_size = env::var(MAX_PAYLOAD_SIZE)
+        let _max_payload_size: usize = env::var(MAX_PAYLOAD_SIZE)
             .unwrap_or(DEFAULT_MAX_PAYLOAD_SIZE.to_string())
             .trim()
             .parse::<usize>()
@@ -163,10 +175,11 @@ impl Server {
                 ))
             })?;
 
-        let inject_copy = self.injected.clone();
+        let injected = self.injected.clone();
         let copy_middlewares = self.middlewares.clone();
-        let extra_headers = self.extra_headers.clone().lock().unwrap().clone();
+        let extra_headers = self.extra_headers.clone();
         let auto_compression = self.auto_compression;
+        let database_config = self.database_config.clone();
         thread::spawn(move || {
             let rt = tokio::runtime::Builder::new_multi_thread()
                 .worker_threads(workers)
@@ -183,27 +196,25 @@ impl Server {
             debug!("Waiting for process to start...");
 
             rt.block_on(async move {
-                let task_locals_copy = task_locals_copy.clone();
                 let _ = execute_startup_handler(startup_handler, &task_locals_copy).await;
 
-                let task_locals = task_locals_copy.clone();
                 let mut app = RouterServer::new();
 
                 // handle logic for each route with pyo3
-                for route in router.lock().unwrap().iter() {
-                    let task_locals = task_locals.clone();
+                for route in router.read().unwrap().iter() {
+                    let task_locals_copy = task_locals_copy.clone();
                     let route_copy = route.clone();
                     let function = route_copy.function.clone();
 
-                    let copy_middlewares_clone = copy_middlewares.clone();
+                    let copy_middlewares = copy_middlewares.clone();
                     let extra_headers = extra_headers.clone();
                     let handler = move |req| {
                         mapping_method(
                             req,
                             function,
-                            task_locals,
-                            copy_middlewares_clone.clone(),
-                            extra_headers.clone(),
+                            task_locals_copy,
+                            copy_middlewares.clone(),
+                            extra_headers.clone().as_ref().clone(),
                         )
                     };
 
@@ -230,7 +241,15 @@ impl Server {
                     app = app.route(&ws_route.path, any(handler));
                 }
 
-                app = app.layer(Extension(inject_copy.clone()));
+                match database_config {
+                    Some(config) => {
+                        let database = DatabaseConnection::new(config).await;
+                        set_sql_connect(database);
+                    }
+                    None => {}
+                };
+
+                app = app.layer(Extension(injected));
                 app = app.layer(
                     TraceLayer::new_for_http().on_response(
                         DefaultOnResponse::new()
@@ -240,12 +259,11 @@ impl Server {
                 );
                 if auto_compression {
                     // Add compression and decompression layers
-                    app = app
-                        .layer(
-                            ServiceBuilder::new()
-                                .layer(RequestDecompressionLayer::new())
-                                .layer(CompressionLayer::new()),
-                        )
+                    app = app.layer(
+                        ServiceBuilder::new()
+                            .layer(RequestDecompressionLayer::new())
+                            .layer(CompressionLayer::new()),
+                    )
                 }
                 debug!("Application started");
                 // run our app with hyper, listening globally on port 3000
@@ -282,11 +300,22 @@ async fn execute_request(
     req: HttpRequest<Body>,
     function: FunctionInfo,
     middlewares: Middleware,
-    extra_headers: HashMap<String, String>,
-) -> ServerResponse {   
-    let deps = req.extensions().get::<DependencyInjection>().cloned();
-    let mut request = Request::from_request(req).await;
+    extra_headers: DashMap<String, String>,
+) -> ServerResponse {
     let response_builder = ServerResponse::builder();
+
+    let deps = req.extensions().get::<DependencyInjection>().cloned();
+    let database = get_sql_connect();
+
+    let mut request = Request::from_request(req).await;
+
+    // inject session db to global
+    match database.clone() {
+        Some(database) => {
+            insert_sql_session(&request.context_id, database.transaction().await);
+        }
+        None => {}
+    }
 
     // Execute before middlewares in parallel where possible
     let before_results = join_all(
@@ -298,8 +327,9 @@ async fn execute_request(
                 let request = request.clone();
                 let middleware = middleware.clone();
                 async move { execute_middleware_function(&request, &middleware).await }
-            })
-    ).await;
+            }),
+    )
+    .await;
 
     // Process results and handle any errors
     for result in before_results {
@@ -308,8 +338,8 @@ async fn execute_request(
             Ok(MiddlewareReturn::Response(r)) => return r.to_axum_response(extra_headers),
             Err(e) => {
                 return response_builder
-                .body(Body::from(format!("Error: {}", e)))
-                .unwrap();
+                    .body(Body::from(format!("Error: {}", e)))
+                    .unwrap();
             }
         }
     }
@@ -331,19 +361,21 @@ async fn execute_request(
     }
 
     // Execute the main handler
-    let mut response = execute_http_function(&request, &function, deps).await.unwrap();
+    let mut response = execute_http_function(&request, &function, deps)
+        .await
+        .unwrap();
 
-     // mapping context id
-     response.context_id = request.context_id;
+    // mapping context id
+    response.context_id = request.context_id;
 
-     // mapping neaded header request to response
-     response.headers.set(
-         "accept-encoding".to_string(),
-         request
-             .headers
-             .get("accept-encoding".to_string())
-             .unwrap_or_default(),
-     );
+    // mapping neaded header request to response
+    response.headers.set(
+        "accept-encoding".to_string(),
+        request
+            .headers
+            .get("accept-encoding".to_string())
+            .unwrap_or_default(),
+    );
 
     // Execute after middlewares with similar optimization
     for (after_middleware, _) in middlewares.get_after_hooks() {
@@ -367,6 +399,14 @@ async fn execute_request(
         };
     }
 
+    // clean up session db
+    // auto commit after response
+    if !database.is_none() {
+        let tx = get_session_database(&response.context_id);
+        tx.unwrap().commit_internal().await;
+        remove_sql_session(&response.context_id);
+    }
+
     response.to_axum_response(extra_headers)
 }
 
@@ -375,7 +415,7 @@ async fn mapping_method(
     function: FunctionInfo,
     task_locals: pyo3_asyncio::TaskLocals,
     middlewares: Middleware,
-    extra_headers: HashMap<String, String>,
+    extra_headers: DashMap<String, String>,
 ) -> impl IntoResponse {
     pyo3_asyncio::tokio::scope(
         task_locals,

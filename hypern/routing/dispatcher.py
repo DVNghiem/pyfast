@@ -15,6 +15,7 @@ from hypern.hypern import Request, Response
 from hypern.response import JSONResponse
 
 from .parser import InputHandler
+from hypern.config import context_store
 
 
 def is_async_callable(obj: typing.Any) -> bool:
@@ -32,6 +33,9 @@ async def run_in_threadpool(func: typing.Callable, *args, **kwargs):
 
 async def dispatch(handler, request: Request, inject: typing.Dict[str, typing.Any]) -> Response:
     try:
+        # set context for global handler
+        context_store.set_context(request.context_id)
+
         is_async = is_async_callable(handler)
         signature = inspect.signature(handler)
         input_handler = InputHandler(request)
