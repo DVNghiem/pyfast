@@ -11,6 +11,7 @@ mod ws;
 mod executor;
 mod di;
 mod middlewares;
+mod database;
 
 #[pymodule]
 fn hypern(_py: Python<'_>, m: &PyModule) -> PyResult<()>  {
@@ -40,6 +41,12 @@ fn hypern(_py: Python<'_>, m: &PyModule) -> PyResult<()>  {
     m.add_class::<ws::websocket::WebSocketSession>()?;
     m.add_class::<ws::route::WebsocketRoute>()?;
     m.add_class::<ws::router::PyWebsocketRouter>()?;
+
+    m.add_class::<database::sql::config::DatabaseConfig>()?;
+    m.add_class::<database::sql::config::DatabaseType>()?;
+    m.add_class::<database::sql::transaction::DatabaseTransaction>()?;
+
+    m.add_function(wrap_pyfunction!(database::context::get_session_database, m)?)?;
 
     pyo3::prepare_freethreaded_python();
     Ok(())

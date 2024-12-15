@@ -8,7 +8,7 @@ import orjson
 from typing_extensions import Annotated, Doc
 
 from hypern.datastructures import Contact, HTTPMethod, Info, License
-from hypern.hypern import FunctionInfo, Router, Route as InternalRoute, WebsocketRouter, MiddlewareConfig
+from hypern.hypern import FunctionInfo, Router, Route as InternalRoute, WebsocketRouter, MiddlewareConfig, DatabaseConfig, Server
 from hypern.openapi import SchemaGenerator, SwaggerUI
 from hypern.processpool import run_processes
 from hypern.response import HTMLResponse, JSONResponse
@@ -199,6 +199,14 @@ class Hypern:
                 """
             ),
         ] = False,
+        database_config: Annotated[
+            DatabaseConfig | None,
+            Doc(
+                """
+                The database configuration for the application.
+                """
+            ),
+        ] = None,
         *args: Any,
         **kwargs: Any,
     ) -> None:
@@ -214,6 +222,7 @@ class Hypern:
         self.start_up_handler = None
         self.shutdown_handler = None
         self.auto_compression = auto_compression
+        self.database_config = database_config
 
         for route in routes or []:
             self.router.extend_route(route(app=self).routes)
@@ -369,6 +378,15 @@ class Hypern:
         after_request = FunctionInfo(handler=after_request, is_async=is_async)
         self.middleware_after_request.append((after_request, middleware.config))
 
+    def set_database_config(self, config: DatabaseConfig):
+        """
+        Sets the database configuration for the application.
+
+        Args:
+            config (DatabaseConfig): The database configuration to be set.
+        """
+        self.database_config = config
+
     def start(
         self,
     ):
@@ -381,22 +399,30 @@ class Hypern:
         if self.scheduler:
             self.scheduler.start()
 
+        server = Server()
+        server.set_router(router=self.router)
+        server.set_websocket_router(websocket_router=self.websocket_router)
+        server.set_injected(injected=self.injectables)
+        server.set_before_hooks(hooks=self.middleware_before_request)
+        server.set_after_hooks(hooks=self.middleware_after_request)
+        server.set_response_headers(headers=self.response_headers)
+        server.set_auto_compression(enabled=self.auto_compression)
+
+        if self.database_config:
+            server.set_database_config(config=self.database_config)
+        if self.start_up_handler:
+            server.set_startup_handler(self.start_up_handler)
+        if self.shutdown_handler:
+            server.set_shutdown_handler(self.shutdown_handler)
+
         run_processes(
+            server=server,
             host=self.args.host,
             port=self.args.port,
             workers=self.args.workers,
             processes=self.args.processes,
             max_blocking_threads=self.args.max_blocking_threads,
-            router=self.router,
-            websocket_router=self.websocket_router,
-            injectables=self.injectables,
-            before_request=self.middleware_before_request,
-            after_request=self.middleware_after_request,
-            response_headers=self.response_headers,
             reload=self.args.reload,
-            on_startup=self.start_up_handler,
-            on_shutdown=self.shutdown_handler,
-            auto_compression=self.args.auto_compression or self.auto_compression,
         )
 
     def add_route(self, method: HTTPMethod, endpoint: str, handler: Callable[..., Any]):
