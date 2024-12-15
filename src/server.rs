@@ -1,6 +1,6 @@
 use crate::{
     database::{
-        context::{get_sql_connect, insert_sql_session, remove_sql_session, set_sql_connect},
+        context::{get_session_database, get_sql_connect, insert_sql_session, remove_sql_session, set_sql_connect},
         sql::{config::DatabaseConfig, connection::DatabaseConnection},
     },
     executor::{execute_http_function, execute_middleware_function, execute_startup_handler},
@@ -398,8 +398,12 @@ async fn execute_request(
             }
         };
     }
+
     // clean up session db
+    // auto commit after response
     if !database.is_none() {
+        let tx = get_session_database(&response.context_id);
+        tx.unwrap().commit_internal().await;
         remove_sql_session(&response.context_id);
     }
 

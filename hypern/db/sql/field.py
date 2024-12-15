@@ -19,6 +19,7 @@ class Field:
         unique: bool = False,
         index: bool = False,
         validators: Optional[list[Callable]] = None,
+        auto_increment: bool = False,
     ):
         """
         Initialize a field with various constraints and validation options.
@@ -40,7 +41,7 @@ class Field:
         self.validators = validators or []
         self.name = None
         self.model = None
-        self.auto_increment = False
+        self.auto_increment = auto_increment
 
     def to_py_type(self, value: Any) -> Any:
         """

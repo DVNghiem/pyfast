@@ -12,7 +12,7 @@ pub trait DynamicParameterBinder {
 
     fn bind_parameters<'q>(
         &self,
-        query: &'q str,
+        query_builder: sqlx::query::Query<'q, Self::Database, Self::Arguments>,
         params: Vec<&PyAny>,
     ) -> Result<sqlx::query::Query<'q, Self::Database, Self::Arguments>, PyErr>;
 
@@ -52,4 +52,14 @@ pub trait DatabaseOperations {
         params: Vec<&PyAny>,
         chunk_size: usize,
     ) -> PyResult<Vec<Vec<PyObject>>>;
+
+    async fn bulk_create(
+        &mut self,
+        transaction: Arc<Mutex<Option<sqlx::Transaction<'static, Self::DatabaseType>>>>,
+        query: &str,
+        params: Vec<Vec<&PyAny>>,
+        batch_size: usize,
+    ) -> Result<u64, PyErr>;
+
+
 }

@@ -19,14 +19,10 @@ impl DynamicParameterBinder for SqliteParameterBinder {
 
     fn bind_parameters<'q>(
         &self,
-        query: &'q str,
+        mut query: Query<'q, Sqlite, SqliteArguments<'q>>,
         params: Vec<&PyAny>,
     ) -> Result<Query<'q, Self::Database, Self::Arguments>, PyErr> {
         // Box the query string to give it a 'static lifetime
-        let owned_query: Box<str> = query.to_string().into_boxed_str();
-
-        // Create a query with the boxed query string
-        let mut query = sqlx::query::<Sqlite>(owned_query.as_ref());
 
         // Bind parameters dynamically
         for param in params {
@@ -105,8 +101,8 @@ impl DatabaseOperations for SqliteDatabase {
         query: &str,
         params: Vec<&PyAny>,
     ) -> Result<u64, PyErr> {
-        let parameter_binder = SqliteParameterBinder;
-        let query_builder = parameter_binder.bind_parameters(query, params)?;
+        let query = sqlx::query(Box::leak(query.to_string().into_boxed_str()));
+        let query_builder = SqliteParameterBinder.bind_parameters(query, params)?;
         let mut guard = transaction.lock().await.take().unwrap();
         let result = query_builder
             .execute(&mut *guard)
@@ -123,9 +119,9 @@ impl DatabaseOperations for SqliteDatabase {
         query: &str,
         params: Vec<&PyAny>,
     ) -> Result<Vec<PyObject>, PyErr> {
-        let parameter_binder = SqliteParameterBinder;
-        let query_builder = parameter_binder.bind_parameters(query, params)?;
-        let mut guard  = transaction.lock().await;
+        let query = sqlx::query(Box::leak(query.to_string().into_boxed_str()));
+        let query_builder = SqliteParameterBinder.bind_parameters(query, params)?;
+        let mut guard = transaction.lock().await;
         let transaction = guard.as_mut().unwrap();
         let rows = query_builder
             .fetch_all(&mut **transaction)
@@ -134,7 +130,7 @@ impl DatabaseOperations for SqliteDatabase {
 
         let result: Vec<PyObject> = rows
             .iter()
-            .map(|row| parameter_binder.bind_result(py, row))
+            .map(|row| SqliteParameterBinder.bind_result(py, row))
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(result)
@@ -148,8 +144,8 @@ impl DatabaseOperations for SqliteDatabase {
         params: Vec<&PyAny>,
         chunk_size: usize,
     ) -> PyResult<Vec<Vec<PyObject>>> {
-        let parameter_binder = SqliteParameterBinder;
-        let query_builder = parameter_binder.bind_parameters(query, params)?;
+        let query = sqlx::query(Box::leak(query.to_string().into_boxed_str()));
+        let query_builder = SqliteParameterBinder.bind_parameters(query, params)?;
         let mut guard = transaction.lock().await.take().unwrap();
         let mut stream = query_builder.fetch(&mut *guard);
         let mut chunks: Vec<Vec<PyObject>> = Vec::new();
@@ -158,7 +154,7 @@ impl DatabaseOperations for SqliteDatabase {
         while let Some(row_result) = stream.next().await {
             match row_result {
                 Ok(row) => {
-                    let row_data: PyObject = parameter_binder.bind_result(py, &row)?;
+                    let row_data: PyObject = SqliteParameterBinder.bind_result(py, &row)?;
                     current_chunk.push(row_data);
 
                     if current_chunk.len() >= chunk_size {
@@ -178,5 +174,38 @@ impl DatabaseOperations for SqliteDatabase {
             chunks.push(current_chunk);
         }
         Ok(chunks)
+    }
+
+    async fn bulk_create(
+        &mut self,
+        transaction: Arc<Mutex<Option<sqlx::Transaction<'static, Self::DatabaseType>>>>,
+        query: &str,
+        params: Vec<Vec<&PyAny>>,
+        batch_size: usize,
+    ) -> Result<u64, PyErr> {
+        let mut total_affected: u64 = 0;
+        let mut guard = transaction.lock().await;
+        let tx = guard.as_mut().ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("No active transaction")
+        })?;
+
+        // Process in batches
+        for chunk in params.chunks(batch_size) {
+            for param_set in chunk {
+                // Build query with current parameters
+                let mut query_builder = sqlx::query(Box::leak(query.to_string().into_boxed_str()));
+                for param in param_set {
+                    query_builder =
+                        SqliteParameterBinder.bind_parameters(query_builder, vec![*param])?;
+                }
+                // Execute query and accumulate affected rows
+                let result = query_builder.execute(&mut **tx).await.map_err(|e| {
+                    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string())
+                })?;
+
+                total_affected += result.rows_affected();
+            }
+        }
+        Ok(total_affected)
     }
 }

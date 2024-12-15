@@ -841,7 +841,7 @@ class QuerySet:
         result = self.model.get_session().execute(sql, [])
         return result
 
-    def bulk_create(self, objs: List[Any], batch_size: int = None) -> None:
+    def bulk_create(self, objs: List[Any], batch_size: int = None) -> int | None:
         """Insert multiple records in an efficient way"""
         if not objs:
             return
@@ -854,15 +854,9 @@ class QuerySet:
 
         values = []
         for obj in objs:
-            row = [getattr(obj, field) for field in fields]
-            values.append(row)
-        print(sql, values, "====")
-        if batch_size:
-            for i in range(0, len(values), batch_size):
-                batch = values[i : i + batch_size]
-                self.model.get_session().execute(sql, batch)
-        else:
-            self.model.get_session().execute(sql, values)
+            values.append([obj._data[i] for i in fields])
+
+        return self.model.get_session().bulk_create(sql, values, batch_size or len(values))
 
     def bulk_update(self, objs: List[Any], fields: List[str], batch_size: int = None) -> None:
         """Update multiple records in an efficient way"""

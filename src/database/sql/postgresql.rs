@@ -2,10 +2,18 @@ use std::sync::Arc;
 
 use chrono::{Datelike, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
 use futures::StreamExt;
-use pyo3::{prelude::*, types::{PyBool, PyDate, PyDateAccess, PyDateTime, PyDict, PyFloat, PyInt, PyList, PyString, PyTime, PyTimeAccess}};
+use pyo3::{
+    prelude::*,
+    types::{
+        PyBool, PyDate, PyDateAccess, PyDateTime, PyDict, PyFloat, PyInt, PyList, PyString, PyTime,
+        PyTimeAccess,
+    },
+};
 use serde_json::to_string;
 use sqlx::{
-    postgres::{PgArguments, PgRow}, types::{Json, JsonValue}, Column, Row, ValueRef
+    postgres::{PgArguments, PgRow},
+    types::{Json, JsonValue},
+    Column, Row, ValueRef,
 };
 use tokio::sync::Mutex;
 
@@ -20,11 +28,9 @@ impl DynamicParameterBinder for PostgresParameterBinder {
 
     fn bind_parameters<'q>(
         &self,
-        query: &'q str,
-        params: Vec<&PyAny>
+        mut query_builder: sqlx::query::Query<'q, Self::Database, PgArguments>,
+        params: Vec<&PyAny>,
     ) -> Result<sqlx::query::Query<'q, Self::Database, PgArguments>, PyErr> {
-        let mut query_builder = sqlx::query::<Self::Database>(query);
-
         for param in params {
             query_builder = match param {
                 // Primitive Types
@@ -39,60 +45,63 @@ impl DynamicParameterBinder for PostgresParameterBinder {
                     let dt: &PyDateTime = p.downcast()?;
                     let naive_dt = NaiveDateTime::new(
                         NaiveDate::from_ymd_opt(
-                            dt.get_year(), 
-                            dt.get_month() as u32, 
-                            dt.get_day() as u32
-                        ).unwrap(),
+                            dt.get_year(),
+                            dt.get_month() as u32,
+                            dt.get_day() as u32,
+                        )
+                        .unwrap(),
                         NaiveTime::from_hms_nano_opt(
-                            dt.get_hour() as u32, 
-                            dt.get_minute() as u32, 
-                            dt.get_second() as u32, 
-                            dt.get_microsecond() as u32 * 1000
-                        ).unwrap()
+                            dt.get_hour() as u32,
+                            dt.get_minute() as u32,
+                            dt.get_second() as u32,
+                            dt.get_microsecond() as u32 * 1000,
+                        )
+                        .unwrap(),
                     );
                     query_builder.bind(naive_dt)
-                },
+                }
                 p if p.is_instance_of::<PyDate>() => {
                     let date: &PyDate = p.downcast()?;
                     let naive_date = NaiveDate::from_ymd_opt(
-                        date.get_year(), 
-                        date.get_month() as u32, 
-                        date.get_day() as u32
-                    ).unwrap();
+                        date.get_year(),
+                        date.get_month() as u32,
+                        date.get_day() as u32,
+                    )
+                    .unwrap();
                     query_builder.bind(naive_date)
-                },
+                }
                 p if p.is_instance_of::<PyTime>() => {
                     let time: &PyTime = p.downcast()?;
                     let naive_time = NaiveTime::from_hms_nano_opt(
-                        time.get_hour() as u32, 
-                        time.get_minute() as u32, 
-                        time.get_second() as u32, 
-                        time.get_microsecond() as u32 * 1000
-                    ).unwrap();
+                        time.get_hour() as u32,
+                        time.get_minute() as u32,
+                        time.get_second() as u32,
+                        time.get_microsecond() as u32 * 1000,
+                    )
+                    .unwrap();
                     query_builder.bind(naive_time)
-                },
+                }
 
                 // JSONB Support
                 p if p.is_instance_of::<PyDict>() => {
                     let dict: &PyDict = p.downcast()?;
-                    let json_value: JsonValue = serde_json::from_str(
-                        &dict.to_string()
-                    ).unwrap_or(JsonValue::Null);
+                    let json_value: JsonValue =
+                        serde_json::from_str(&dict.to_string()).unwrap_or(JsonValue::Null);
                     query_builder.bind(Json(json_value))
-                },
+                }
                 p if p.is_instance_of::<PyList>() => {
                     let list: &PyList = p.downcast()?;
-                    let json_value: JsonValue = serde_json::from_str(
-                        &list.to_string()
-                    ).unwrap_or(JsonValue::Null);
+                    let json_value: JsonValue =
+                        serde_json::from_str(&list.to_string()).unwrap_or(JsonValue::Null);
                     query_builder.bind(Json(json_value))
-                },
+                }
 
                 // Fallback for unsupported types
                 _ => {
-                    return Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
-                        format!("Unsupported parameter type: {:?}", param.get_type()),
-                    ))
+                    return Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(format!(
+                        "Unsupported parameter type: {:?}",
+                        param.get_type()
+                    )))
                 }
             };
         }
@@ -123,8 +132,7 @@ impl DynamicParameterBinder for PostgresParameterBinder {
                             dict.set_item(column_name, float_val)?;
                         } else if let Ok(bool_val) = row.try_get::<bool, _>(i) {
                             dict.set_item(column_name, bool_val)?;
-                        } 
-                        
+                        }
                         // Date and Time Types
                         else if let Ok(datetime_val) = row.try_get::<NaiveDateTime, _>(i) {
                             let py_datetime = PyDateTime::new(
@@ -136,15 +144,15 @@ impl DynamicParameterBinder for PostgresParameterBinder {
                                 datetime_val.minute() as u8,
                                 datetime_val.second() as u8,
                                 (datetime_val.nanosecond() / 1000) as u32,
-                                None
+                                None,
                             )?;
                             dict.set_item(column_name, py_datetime)?;
                         } else if let Ok(date_val) = row.try_get::<NaiveDate, _>(i) {
                             let py_date = PyDate::new(
-                                py, 
-                                date_val.year(), 
-                                date_val.month() as u8, 
-                                date_val.day() as u8
+                                py,
+                                date_val.year(),
+                                date_val.month() as u8,
+                                date_val.day() as u8,
                             )?;
                             dict.set_item(column_name, py_date)?;
                         } else if let Ok(time_val) = row.try_get::<NaiveTime, _>(i) {
@@ -154,21 +162,21 @@ impl DynamicParameterBinder for PostgresParameterBinder {
                                 time_val.minute() as u8,
                                 time_val.second() as u8,
                                 (time_val.nanosecond() / 1000) as u32,
-                                None
+                                None,
                             )?;
                             dict.set_item(column_name, py_time)?;
                         }
-                        
                         // JSONB and Complex Types
                         else if let Ok(json_val) = row.try_get::<Json<JsonValue>, _>(i) {
                             // Convert JSON to Python object
-                            let json_str = to_string(&json_val.0)
-                                .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
-                            
-                            let py_json = py.eval(&format!("json.loads('{}')", json_str), None, None)?;
+                            let json_str = to_string(&json_val.0).map_err(|e| {
+                                PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string())
+                            })?;
+
+                            let py_json =
+                                py.eval(&format!("json.loads('{}')", json_str), None, None)?;
                             dict.set_item(column_name, py_json)?;
                         }
-                        
                         // Array Types (basic support)
                         else if let Ok(str_array) = row.try_get::<Vec<String>, _>(i) {
                             let py_list = PyList::new(py, &str_array);
@@ -177,7 +185,6 @@ impl DynamicParameterBinder for PostgresParameterBinder {
                             let py_list = PyList::new(py, &int_array);
                             dict.set_item(column_name, py_list)?;
                         }
-                        
                         // Fallback for unknown types
                         else {
                             dict.set_item(column_name, py.None())?;
@@ -210,8 +217,8 @@ impl DatabaseOperations for PostgresDatabase {
         query: &str,
         params: Vec<&PyAny>,
     ) -> Result<u64, PyErr> {
-        let parameter_binder = PostgresParameterBinder;
-        let query_builder = parameter_binder.bind_parameters(query, params)?;
+        let query = sqlx::query(query);
+        let query_builder = PostgresParameterBinder.bind_parameters(query, params)?;
         let mut guard = transaction.lock().await.take().unwrap();
         let result = query_builder
             .execute(&mut *guard)
@@ -229,10 +236,10 @@ impl DatabaseOperations for PostgresDatabase {
         query: &str,
         params: Vec<&PyAny>,
     ) -> Result<Vec<PyObject>, PyErr> {
-        
-        let parameter_binder = PostgresParameterBinder;
-        let query_builder = parameter_binder.bind_parameters(query, params)?;
-        let mut guard  = transaction.lock().await;
+
+        let query = sqlx::query(query);
+        let query_builder = PostgresParameterBinder.bind_parameters(query, params)?;
+        let mut guard = transaction.lock().await;
         let transaction = guard.as_mut().unwrap();
         let rows = query_builder
             .fetch_all(&mut **transaction)
@@ -241,7 +248,7 @@ impl DatabaseOperations for PostgresDatabase {
 
         let result: Vec<PyObject> = rows
             .iter()
-            .map(|row| parameter_binder.bind_result(py, row))
+            .map(|row| PostgresParameterBinder.bind_result(py, row))
             .collect::<Result<Vec<_>, _>>()?;
         Ok(result)
     }
@@ -254,8 +261,8 @@ impl DatabaseOperations for PostgresDatabase {
         params: Vec<&PyAny>,
         chunk_size: usize,
     ) -> PyResult<Vec<Vec<PyObject>>> {
-        let parameter_binder = PostgresParameterBinder;
-        let query_builder = parameter_binder.bind_parameters(query, params)?;
+        let query = sqlx::query(query);
+        let query_builder = PostgresParameterBinder.bind_parameters(query, params)?;
         let mut guard = transaction.lock().await.take().unwrap();
         let mut stream = query_builder.fetch(&mut *guard);
         let mut chunks: Vec<Vec<PyObject>> = Vec::new();
@@ -264,7 +271,7 @@ impl DatabaseOperations for PostgresDatabase {
         while let Some(row_result) = stream.next().await {
             match row_result {
                 Ok(row) => {
-                    let row_data: PyObject = parameter_binder.bind_result(py, &row)?;
+                    let row_data: PyObject = PostgresParameterBinder.bind_result(py, &row)?;
                     current_chunk.push(row_data);
 
                     if current_chunk.len() >= chunk_size {
@@ -285,5 +292,37 @@ impl DatabaseOperations for PostgresDatabase {
         }
         Ok(chunks)
     }
-    
+
+    async fn bulk_create(
+        &mut self,
+        transaction: Arc<Mutex<Option<sqlx::Transaction<'static, Self::DatabaseType>>>>,
+        query: &str,
+        params: Vec<Vec<&PyAny>>,
+        batch_size: usize,
+    ) -> Result<u64, PyErr> {
+        let mut total_affected: u64 = 0;
+        let mut guard = transaction.lock().await;
+        let tx = guard.as_mut().ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("No active transaction")
+        })?;
+
+        // Process in batches
+        for chunk in params.chunks(batch_size) {
+            for param_set in chunk {
+                // Build query with current parameters
+                let mut query_builder = sqlx::query(query);
+                for param in param_set {
+                    query_builder =
+                        PostgresParameterBinder.bind_parameters(query_builder, vec![*param])?;
+                }
+                // Execute query and accumulate affected rows
+                let result = query_builder.execute(&mut **tx).await.map_err(|e| {
+                    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string())
+                })?;
+
+                total_affected += result.rows_affected();
+            }
+        }
+        Ok(total_affected)
+    }
 }

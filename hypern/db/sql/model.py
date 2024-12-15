@@ -110,3 +110,7 @@ class Model(metaclass=MetaModel):
     @classmethod
     def _get_foreign_key_sql(cls, name, field) -> str:
         return f"FOREIGN KEY ({name}) REFERENCES {field.to_model}(id) ON DELETE {field.on_delete} ON UPDATE {field.on_update}"
+
+    def save(self):
+        query_object = QuerySet(self)
+        query_object.bulk_create([self])
