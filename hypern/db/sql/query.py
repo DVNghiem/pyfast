@@ -478,7 +478,7 @@ class QuerySet:
         # Process Q objects
         for arg in args:
             if isinstance(arg, Q):
-                sql, params = self._process_q_object(arg, [])
+                sql, params = qs._process_q_object(arg, [])
                 if sql:
                     qs.query_parts["where"].append(sql)
                     qs.params.extend(params)
@@ -491,7 +491,7 @@ class QuerySet:
         # Process keyword arguments
         if kwargs:
             q = Q(**kwargs)
-            sql, params = self._process_q_object(q, [])
+            sql, params = qs._process_q_object(q, [])
             if sql:
                 qs.query_parts["where"].append(sql)
                 qs.params.extend(params)
@@ -588,10 +588,10 @@ class QuerySet:
         parts = [f"{alias} AS ("]
 
         if partition_by:
-            parts.append(self._process_partition_by(partition_by, qs))
+            parts.append(qs._process_partition_by(partition_by, qs))
 
         if order_by:
-            parts.append(self._process_order_by(order_by, qs))
+            parts.append(qs._process_order_by(order_by, qs))
 
         parts.append(")")
         qs.query_parts["window"].append(" ".join(parts))
@@ -826,8 +826,8 @@ class QuerySet:
         sql = f"UPDATE {self.model.Meta.table_name} SET {', '.join(updates)}"
         if where_sql:
             sql += f" WHERE {where_sql}"
-
-        result = self.model.get_session().execute(sql, params + self.params)
+        params = self.params + params
+        result = self.model.get_session().bulk_change(sql, [params], 1)
         return result
 
     def delete(self) -> int:
@@ -838,8 +838,7 @@ class QuerySet:
         if where_sql:
             sql += f" WHERE {where_sql}"
 
-        result = self.model.get_session().execute(sql, [])
-        return result
+        return self.model.get_session().bulk_change(sql, [self.params], 1)
 
     def bulk_create(self, objs: List[Any], batch_size: int = None) -> int | None:
         """Insert multiple records in an efficient way"""
@@ -856,30 +855,7 @@ class QuerySet:
         for obj in objs:
             values.append([obj._data[i] for i in fields])
 
-        return self.model.get_session().bulk_create(sql, values, batch_size or len(values))
-
-    def bulk_update(self, objs: List[Any], fields: List[str], batch_size: int = None) -> None:
-        """Update multiple records in an efficient way"""
-        if not objs or not fields:
-            return
-
-        # Prepare UPDATE statement
-        updates = [f"{field} = {self.__get_next_param()}" for field in fields]
-        sql = f"UPDATE {self.model.Meta.table_name} SET {', '.join(updates)} WHERE id = {self.__get_next_param()}"
-
-        # Prepare values
-        values = []
-        for obj in objs:
-            row = [getattr(obj, field) for field in fields]
-            row.append(obj.id)  # Add ID for WHERE clause
-            values.append(row)
-
-        if batch_size:
-            for i in range(0, len(values), batch_size):
-                batch = values[i : i + batch_size]
-                self.model.get_session().execute(sql, batch)
-        else:
-            self.model.get_session().execute(sql, values)
+        return self.model.get_session().bulk_change(sql, values, batch_size or len(values))
 
     def explain(self, analyze: bool = False, verbose: bool = False, costs: bool = False, buffers: bool = False, timing: bool = False) -> Dict:
         """Get the query execution plan"""

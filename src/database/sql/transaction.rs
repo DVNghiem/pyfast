@@ -187,7 +187,7 @@ impl DatabaseTransaction {
         Ok(result)
     }
 
-    fn bulk_create(
+    fn bulk_change(
         &mut self,
         query: &str,
         params: Vec<Vec<&PyAny>>,
@@ -197,13 +197,13 @@ impl DatabaseTransaction {
         let result = futures::executor::block_on(async move {
             let row_effect = match transaction {
                 DatabaseTransactionType::Postgres(mut db, transaction) => {
-                    db.bulk_create(transaction, query, params, batch_size).await
+                    db.bulk_change(transaction, query, params, batch_size).await
                 }
                 DatabaseTransactionType::MySql(mut db, transaction) => {
-                    db.bulk_create(transaction, query, params, batch_size).await
+                    db.bulk_change(transaction, query, params, batch_size).await
                 }
                 DatabaseTransactionType::SQLite(mut db, transaction) => {
-                    db.bulk_create(transaction, query, params, batch_size).await
+                    db.bulk_change(transaction, query, params, batch_size).await
                 }
             };
             Ok(match row_effect {
@@ -213,7 +213,7 @@ impl DatabaseTransaction {
                 }
                 Err(e) => {
                     self.rollback_internal().await;
-                    error!("Error in bulk_create: {:?}", e);
+                    error!("Error in bulk_change: {:?}", e);
                     return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
                         e.to_string(),
                     ));

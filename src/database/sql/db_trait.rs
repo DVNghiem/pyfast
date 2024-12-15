@@ -53,7 +53,7 @@ pub trait DatabaseOperations {
         chunk_size: usize,
     ) -> PyResult<Vec<Vec<PyObject>>>;
 
-    async fn bulk_create(
+    async fn bulk_change(
         &mut self,
         transaction: Arc<Mutex<Option<sqlx::Transaction<'static, Self::DatabaseType>>>>,
         query: &str,

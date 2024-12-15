@@ -293,7 +293,7 @@ impl DatabaseOperations for PostgresDatabase {
         Ok(chunks)
     }
 
-    async fn bulk_create(
+    async fn bulk_change(
         &mut self,
         transaction: Arc<Mutex<Option<sqlx::Transaction<'static, Self::DatabaseType>>>>,
         query: &str,
