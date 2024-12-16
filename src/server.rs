@@ -156,8 +156,7 @@ impl Server {
         let websocket_router = self.websocket_router.clone();
 
         let asyncio = py.import("asyncio")?;
-        let event_loop = asyncio.call_method0("new_event_loop")?;
-        asyncio.call_method1("set_event_loop", (event_loop,))?;
+        let event_loop = asyncio.call_method0("get_event_loop")?;
 
         let startup_handler = self.startup_handler.clone();
         let shutdown_handler = self.shutdown_handler.clone();
