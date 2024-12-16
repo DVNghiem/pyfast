@@ -2,24 +2,50 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from typing import Any, Callable, List, TypeVar
 
 import orjson
+import psutil
 from typing_extensions import Annotated, Doc
 
+from hypern.args_parser import ArgsConfig
 from hypern.datastructures import Contact, HTTPMethod, Info, License
-from hypern.hypern import FunctionInfo, Router, Route as InternalRoute, WebsocketRouter, MiddlewareConfig, DatabaseConfig, Server
+from hypern.hypern import DatabaseConfig, FunctionInfo, MiddlewareConfig, Router, Server, WebsocketRouter
+from hypern.hypern import Route as InternalRoute
+from hypern.logging import logger
+from hypern.middleware import Middleware
 from hypern.openapi import SchemaGenerator, SwaggerUI
 from hypern.processpool import run_processes
 from hypern.response import HTMLResponse, JSONResponse
 from hypern.routing import Route
 from hypern.scheduler import Scheduler
-from hypern.middleware import Middleware
-from hypern.args_parser import ArgsConfig
 from hypern.ws import WebsocketRoute
-from hypern.logging import logger
 
 AppType = TypeVar("AppType", bound="Hypern")
+
+
+@dataclass
+class ThreadConfig:
+    workers: int
+    max_blocking_threads: int
+
+
+class ThreadConfigurator:
+    def __init__(self):
+        self._cpu_count = psutil.cpu_count(logical=True)
+        self._memory_gb = psutil.virtual_memory().total / (1024**3)
+
+    def get_config(self, concurrent_requests: int = None) -> ThreadConfig:
+        """Calculate optimal thread configuration based on system resources."""
+        workers = max(2, self._cpu_count)
+
+        if concurrent_requests:
+            max_blocking = min(max(32, concurrent_requests * 2), workers * 4, int(self._memory_gb * 8))
+        else:
+            max_blocking = min(workers * 4, int(self._memory_gb * 8), 256)
+
+        return ThreadConfig(workers=workers, max_blocking_threads=max_blocking)
 
 
 class Hypern:
@@ -223,6 +249,7 @@ class Hypern:
         self.shutdown_handler = None
         self.auto_compression = auto_compression
         self.database_config = database_config
+        self.thread_config = ThreadConfigurator().get_config()
 
         for route in routes or []:
             self.router.extend_route(route(app=self).routes)
@@ -414,6 +441,10 @@ class Hypern:
             server.set_startup_handler(self.start_up_handler)
         if self.shutdown_handler:
             server.set_shutdown_handler(self.shutdown_handler)
+
+        if self.args.auto_workers:
+            self.args.workers = self.thread_config.workers
+            self.args.max_blocking_threads = self.thread_config.max_blocking_threads
 
         run_processes(
             server=server,
