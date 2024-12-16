@@ -10,9 +10,15 @@ pub trait DynamicParameterBinder {
     type Database: Database;
     type Row;
 
+    fn convert_sql_params<'q>(
+        &self,
+        query: &str,
+        params: Vec<&'q PyAny>,
+    ) -> Result<(String, Vec<&'q PyAny>), PyErr>;
+
     fn bind_parameters<'q>(
         &self,
-        query_builder: sqlx::query::Query<'q, Self::Database, Self::Arguments>,
+        query: &'q str,
         params: Vec<&PyAny>,
     ) -> Result<sqlx::query::Query<'q, Self::Database, Self::Arguments>, PyErr>;
 
@@ -46,7 +52,7 @@ pub trait DatabaseOperations {
 
     async fn stream_data(
         &mut self,
-        py: Python<'_>, 
+        py: Python<'_>,
         transaction: Arc<Mutex<Option<sqlx::Transaction<'static, Self::DatabaseType>>>>,
         query: &str,
         params: Vec<&PyAny>,
@@ -60,6 +66,4 @@ pub trait DatabaseOperations {
         params: Vec<Vec<&PyAny>>,
         batch_size: usize,
     ) -> Result<u64, PyErr>;
-
-
 }
