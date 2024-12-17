@@ -3,7 +3,7 @@ use pyo3::prelude::*;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokio::task::JoinHandle;
-use crate::runtime::get_runtime;
+use crate::instants::get_runtime;
 
 #[pyclass]
 struct TaskResult {
