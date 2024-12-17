@@ -2,11 +2,14 @@ use std::sync::Arc;
 
 use pyo3::{prelude::*, types::PyDict};
 
-use pyo3_asyncio::TaskLocals;
 use crate::{
-    di::DependencyInjection,
-    types::{function_info::FunctionInfo, middleware::MiddlewareReturn, request::Request, response::Response},
+    di::DependencyInjection, instants::get_mem_pool, types::{
+        function_info::FunctionInfo, middleware::MiddlewareReturn, request::Request,
+        response::Response,
+    }
 };
+use pyo3_asyncio::TaskLocals;
+
 
 #[inline]
 fn get_function_output<'a, T>(
@@ -19,20 +22,35 @@ where
     T: ToPyObject,
 {
     let handler = function.handler.as_ref(py);
-    let kwargs = PyDict::new(py);
+
+    let mem_pool = get_mem_pool();
+
+    // Use pooled PyDict instead of creating new one
+    let kwargs = mem_pool.get_dict(py).unwrap();
 
     // Add dependencies to kwargs if provided
     if let Some(dependency_injection) = deps {
-        let _ = kwargs.set_item(
+
+        kwargs.as_ref(py).set_item(
             "inject",
             dependency_injection
                 .to_object(py)
                 .into_ref(py)
                 .downcast::<PyDict>()?
                 .to_owned(),
-        );
+        )?;
     }
-    handler.call((function_args.to_object(py),), Some(kwargs))
+
+    let result = handler.call(
+        (function_args.to_object(py),),
+        Some(kwargs.as_ref(py).downcast::<PyDict>()?),
+    );
+
+    // Release the dict back to pool
+    mem_pool.return_dict(py, kwargs.as_ref(py).into());
+
+    result
+
 }
 
 #[inline]
@@ -55,7 +73,6 @@ pub async fn execute_http_function(
         get_function_output(function, py, request, deps)?.extract()
     })
 }
-
 
 #[inline]
 pub async fn execute_middleware_function<T>(
@@ -88,7 +105,6 @@ where
         })
     }
 }
-
 
 pub async fn execute_startup_handler(
     event_handler: Option<Arc<FunctionInfo>>,

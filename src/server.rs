@@ -1,20 +1,17 @@
 use crate::{
     database::{
-        context::{get_session_database, get_sql_connect, insert_sql_session, remove_sql_session, set_sql_connect},
+        context::{
+            get_session_database, get_sql_connect, insert_sql_session, remove_sql_session,
+            set_sql_connect,
+        },
         sql::{config::DatabaseConfig, connection::DatabaseConnection},
-    },
-    executor::{execute_http_function, execute_middleware_function, execute_startup_handler},
-    middlewares::base::{Middleware, MiddlewareConfig},
-    router::router::Router,
-    types::{function_info::FunctionInfo, middleware::MiddlewareReturn, request::Request},
-    ws::{router::WebsocketRouter, socket::SocketHeld, websocket::websocket_handler},
+    }, executor::{execute_http_function, execute_middleware_function, execute_startup_handler}, instants::create_mem_pool, middlewares::base::{Middleware, MiddlewareConfig}, router::{cache::RouteCache, radix::RadixTree, router::Router}, types::{function_info::FunctionInfo, middleware::MiddlewareReturn, request::Request}, ws::{router::WebsocketRouter, socket::SocketHeld, websocket::websocket_handler}
 };
 use dashmap::DashMap;
 use futures::future::join_all;
-use pyo3::{exceptions::PyValueError, prelude::*, types::PyDict};
+use pyo3::{prelude::*, types::PyDict};
 use std::{
     collections::HashMap,
-    env,
     sync::{
         atomic::Ordering::{Relaxed, SeqCst},
         RwLock,
@@ -47,12 +44,12 @@ use tracing::{debug, Level};
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 static STARTED: AtomicBool = AtomicBool::new(false);
-const MAX_PAYLOAD_SIZE: &str = "MAX_PAYLOAD_SIZE";
-const DEFAULT_MAX_PAYLOAD_SIZE: usize = 1_000_000; // 1Mb
 
 #[pyclass]
 pub struct Server {
     router: Arc<RwLock<Router>>,
+    route_cache: Arc<RouteCache>,
+    radix_tree: Arc<RwLock<RadixTree>>,
     websocket_router: Arc<WebsocketRouter>,
     startup_handler: Option<Arc<FunctionInfo>>,
     shutdown_handler: Option<Arc<FunctionInfo>>,
@@ -61,6 +58,8 @@ pub struct Server {
     extra_headers: Arc<DashMap<String, String>>,
     auto_compression: bool,
     database_config: Option<DatabaseConfig>,
+    mem_pool_min_capacity: usize,
+    mem_pool_max_capacity: usize,
 }
 
 #[pymethods]
@@ -71,6 +70,8 @@ impl Server {
         let middlewares = Middleware::new().unwrap();
         Self {
             router: Arc::new(RwLock::new(Router::default())),
+            route_cache: Arc::new(RouteCache::new(1000, 3600)), // 1000 entries, 1 hour TTL
+            radix_tree: Arc::new(RwLock::new(RadixTree::new())),
             websocket_router: Arc::new(WebsocketRouter::default()),
             startup_handler: None,
             shutdown_handler: None,
@@ -79,10 +80,22 @@ impl Server {
             extra_headers: Arc::new(DashMap::new()),
             auto_compression: true,
             database_config: None,
+            mem_pool_min_capacity: 10,
+            mem_pool_max_capacity: 100,
         }
     }
 
     pub fn set_router(&mut self, router: Router) {
+        // Clear existing cache
+        self.route_cache.clear();
+
+        // Update radix tree
+        let mut radix_tree = self.radix_tree.write().unwrap();
+        for route in router.iter() {
+            radix_tree.insert(route.clone());
+        }
+
+        // Update router
         self.router = Arc::new(RwLock::new(router));
     }
 
@@ -128,6 +141,26 @@ impl Server {
         self.database_config = Some(config);
     }
 
+    pub fn set_mem_pool_capacity(&mut self, min_capacity: usize, max_capacity: usize) {
+        self.mem_pool_min_capacity = min_capacity;
+        self.mem_pool_max_capacity = max_capacity;
+    }
+
+    pub fn optimize_routes(&mut self) {
+        // Clear cache
+        self.route_cache.clear();
+        
+        // Rebuild radix tree
+        let mut radix_tree = self.radix_tree.write().unwrap();
+        let router = self.router.read().unwrap();
+        
+        for route in router.iter() {
+            let mut optimized_route = route.clone();
+            optimized_route.optimize_path_matching();
+            radix_tree.insert(optimized_route);
+        }
+    }
+
     pub fn start(
         &mut self,
         py: Python,
@@ -150,6 +183,7 @@ impl Server {
             return Ok(());
         }
 
+        
         let raw_socket = socket.try_borrow_mut()?.get_socket();
 
         let router = self.router.clone();
@@ -164,27 +198,23 @@ impl Server {
         let task_locals = pyo3_asyncio::TaskLocals::new(event_loop).copy_context(py)?;
         let task_locals_copy = task_locals.clone();
 
-        let _max_payload_size: usize = env::var(MAX_PAYLOAD_SIZE)
-            .unwrap_or(DEFAULT_MAX_PAYLOAD_SIZE.to_string())
-            .trim()
-            .parse::<usize>()
-            .map_err(|e| {
-                PyValueError::new_err(format!(
-                    "Failed to parse environment variable {MAX_PAYLOAD_SIZE} - {e}"
-                ))
-            })?;
-
         let injected = self.injected.clone();
         let copy_middlewares = self.middlewares.clone();
         let extra_headers = self.extra_headers.clone();
         let auto_compression = self.auto_compression;
         let database_config = self.database_config.clone();
+        let route_cache = self.route_cache.clone();
+        let radix_tree = self.radix_tree.clone();
+        let mem_pool_min_capacity = self.mem_pool_min_capacity;
+        let mem_pool_max_capacity = self.mem_pool_max_capacity;
+
         thread::spawn(move || {
             let rt = tokio::runtime::Builder::new_multi_thread()
                 .worker_threads(workers)
                 .max_blocking_threads(max_blocking_threads)
                 .thread_keep_alive(Duration::from_secs(60))
                 .thread_name("hypern-worker")
+                .thread_stack_size(3 * 1024 * 1024)  // 3MB stack
                 .enable_all()
                 .build()
                 .unwrap();
@@ -195,6 +225,8 @@ impl Server {
             debug!("Waiting for process to start...");
 
             rt.block_on(async move {
+                create_mem_pool(mem_pool_min_capacity, mem_pool_max_capacity);
+
                 let _ = execute_startup_handler(startup_handler, &task_locals_copy).await;
 
                 let mut app = RouterServer::new();
@@ -207,11 +239,45 @@ impl Server {
 
                     let copy_middlewares = copy_middlewares.clone();
                     let extra_headers = extra_headers.clone();
-                    let handler = move |req| {
+                    let route_cache = route_cache.clone();
+                    let radix_tree = radix_tree.clone();
+
+                    let handler = move |req: HttpRequest<Body>| {
+                        let path = req.uri().path().to_string();
+                        let method = req.method().as_str().to_string();
+
+                        // Try cache first
+                        let cache_key = format!("{}:{}", method, path);
+                        if let Some(cached_route) = route_cache.get(&cache_key) {
+                            return mapping_method(
+                                req,
+                                cached_route.function.clone(),
+                                task_locals_copy.clone(),
+                                copy_middlewares.clone(),
+                                extra_headers.clone().as_ref().clone(),
+                            );
+                        }
+
+                        // Try radix tree
+                        if let Some(matched_route) = radix_tree.read().unwrap().find(&path, &method)
+                        {
+                            // Cache the result
+                            route_cache.insert(cache_key, matched_route.clone());
+
+                            return mapping_method(
+                                req,
+                                matched_route.function.clone(),
+                                task_locals_copy.clone(),
+                                copy_middlewares.clone(),
+                                extra_headers.clone().as_ref().clone(),
+                            );
+                        }
+
+                        // Fallback to original route
                         mapping_method(
                             req,
-                            function,
-                            task_locals_copy,
+                            function.clone(),
+                            task_locals_copy.clone(),
                             copy_middlewares.clone(),
                             extra_headers.clone().as_ref().clone(),
                         )

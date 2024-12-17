@@ -434,6 +434,9 @@ class Hypern:
         server.set_after_hooks(hooks=self.middleware_after_request)
         server.set_response_headers(headers=self.response_headers)
         server.set_auto_compression(enabled=self.auto_compression)
+        server.set_mem_pool_capacity(min_capacity=self.args.min_capacity, max_capacity=self.args.max_capacity)
+
+        server.optimize_routes()
 
         if self.database_config:
             server.set_database_config(config=self.database_config)

@@ -62,6 +62,22 @@ class ArgsConfig:
             help="It sets the number of workers and max-blocking-threads automatically.",
         )
 
+        parser.add_argument(
+            "--min-capacity",
+            type=int,
+            default=1,
+            required=False,
+            help="Choose the minimum memory pool capacity. [Default: 1]",
+        )
+
+        parser.add_argument(
+            "--max-capacity",
+            type=int,
+            default=100,
+            required=False,
+            help="Choose the maximum memory pool capacity. [Default: 100]",
+        )
+
         args, _ = parser.parse_known_args()
 
         self.host = args.host or "127.0.0.1"
@@ -72,3 +88,5 @@ class ArgsConfig:
         self.reload = args.reload or False
         self.auto_compression = args.auto_compression
         self.auto_workers = args.auto_workers
+        self.min_capacity = args.min_capacity
+        self.max_capacity = args.max_capacity
