@@ -5,7 +5,13 @@ use crate::{
             set_sql_connect,
         },
         sql::{config::DatabaseConfig, connection::DatabaseConnection},
-    }, executor::{execute_http_function, execute_middleware_function, execute_startup_handler}, instants::create_mem_pool, middlewares::base::{Middleware, MiddlewareConfig}, router::{cache::RouteCache, radix::RadixTree, router::Router}, types::{function_info::FunctionInfo, middleware::MiddlewareReturn, request::Request}, ws::{router::WebsocketRouter, socket::SocketHeld, websocket::websocket_handler}
+    },
+    executor::{execute_http_function, execute_middleware_function, execute_startup_handler},
+    instants::create_mem_pool,
+    middlewares::base::{Middleware, MiddlewareConfig},
+    router::router::Router,
+    types::{function_info::FunctionInfo, middleware::MiddlewareReturn, request::Request},
+    ws::{router::WebsocketRouter, socket::SocketHeld, websocket::websocket_handler},
 };
 use dashmap::DashMap;
 use futures::future::join_all;
@@ -48,8 +54,6 @@ static STARTED: AtomicBool = AtomicBool::new(false);
 #[pyclass]
 pub struct Server {
     router: Arc<RwLock<Router>>,
-    route_cache: Arc<RouteCache>,
-    radix_tree: Arc<RwLock<RadixTree>>,
     websocket_router: Arc<WebsocketRouter>,
     startup_handler: Option<Arc<FunctionInfo>>,
     shutdown_handler: Option<Arc<FunctionInfo>>,
@@ -70,8 +74,6 @@ impl Server {
         let middlewares = Middleware::new().unwrap();
         Self {
             router: Arc::new(RwLock::new(Router::default())),
-            route_cache: Arc::new(RouteCache::new(1000, 3600)), // 1000 entries, 1 hour TTL
-            radix_tree: Arc::new(RwLock::new(RadixTree::new())),
             websocket_router: Arc::new(WebsocketRouter::default()),
             startup_handler: None,
             shutdown_handler: None,
@@ -86,15 +88,6 @@ impl Server {
     }
 
     pub fn set_router(&mut self, router: Router) {
-        // Clear existing cache
-        self.route_cache.clear();
-
-        // Update radix tree
-        let mut radix_tree = self.radix_tree.write().unwrap();
-        for route in router.iter() {
-            radix_tree.insert(route.clone());
-        }
-
         // Update router
         self.router = Arc::new(RwLock::new(router));
     }
@@ -146,21 +139,6 @@ impl Server {
         self.mem_pool_max_capacity = max_capacity;
     }
 
-    pub fn optimize_routes(&mut self) {
-        // Clear cache
-        self.route_cache.clear();
-        
-        // Rebuild radix tree
-        let mut radix_tree = self.radix_tree.write().unwrap();
-        let router = self.router.read().unwrap();
-        
-        for route in router.iter() {
-            let mut optimized_route = route.clone();
-            optimized_route.optimize_path_matching();
-            radix_tree.insert(optimized_route);
-        }
-    }
-
     pub fn start(
         &mut self,
         py: Python,
@@ -183,7 +161,6 @@ impl Server {
             return Ok(());
         }
 
-        
         let raw_socket = socket.try_borrow_mut()?.get_socket();
 
         let router = self.router.clone();
@@ -203,8 +180,6 @@ impl Server {
         let extra_headers = self.extra_headers.clone();
         let auto_compression = self.auto_compression;
         let database_config = self.database_config.clone();
-        let route_cache = self.route_cache.clone();
-        let radix_tree = self.radix_tree.clone();
         let mem_pool_min_capacity = self.mem_pool_min_capacity;
         let mem_pool_max_capacity = self.mem_pool_max_capacity;
 
@@ -214,7 +189,7 @@ impl Server {
                 .max_blocking_threads(max_blocking_threads)
                 .thread_keep_alive(Duration::from_secs(60))
                 .thread_name("hypern-worker")
-                .thread_stack_size(3 * 1024 * 1024)  // 3MB stack
+                .thread_stack_size(3 * 1024 * 1024) // 3MB stack
                 .enable_all()
                 .build()
                 .unwrap();
@@ -237,49 +212,15 @@ impl Server {
                     let route_copy = route.clone();
                     let function = route_copy.function.clone();
 
-                    let copy_middlewares = copy_middlewares.clone();
-                    let extra_headers = extra_headers.clone();
-                    let route_cache = route_cache.clone();
-                    let radix_tree = radix_tree.clone();
-
-                    let handler = move |req: HttpRequest<Body>| {
-                        let path = req.uri().path().to_string();
-                        let method = req.method().as_str().to_string();
-
-                        // Try cache first
-                        let cache_key = format!("{}:{}", method, path);
-                        if let Some(cached_route) = route_cache.get(&cache_key) {
-                            return mapping_method(
-                                req,
-                                cached_route.function.clone(),
-                                task_locals_copy.clone(),
-                                copy_middlewares.clone(),
-                                extra_headers.clone().as_ref().clone(),
-                            );
-                        }
-
-                        // Try radix tree
-                        if let Some(matched_route) = radix_tree.read().unwrap().find(&path, &method)
-                        {
-                            // Cache the result
-                            route_cache.insert(cache_key, matched_route.clone());
-
-                            return mapping_method(
-                                req,
-                                matched_route.function.clone(),
-                                task_locals_copy.clone(),
-                                copy_middlewares.clone(),
-                                extra_headers.clone().as_ref().clone(),
-                            );
-                        }
-
-                        // Fallback to original route
+                    let copy_middlewares_clone = copy_middlewares.clone();
+                    let extra_headers = extra_headers.as_ref().clone();
+                    let handler = move |req| {
                         mapping_method(
                             req,
-                            function.clone(),
+                            function,
                             task_locals_copy.clone(),
-                            copy_middlewares.clone(),
-                            extra_headers.clone().as_ref().clone(),
+                            copy_middlewares_clone.clone(),
+                            extra_headers.clone(),
                         )
                     };
 
