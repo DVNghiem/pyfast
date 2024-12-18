@@ -186,9 +186,9 @@ impl DynamicParameterBinder for PostgresParameterBinder {
                                 PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string())
                             })?;
 
-                            let py_json =
-                                py.eval(&format!("json.loads('{}')", json_str), None, None)?;
-                            dict.set_item(column_name, py_json)?;
+                            // let py_json =
+                            //     py.eval(&format!("import orjson; orjson.loads('{}')", json_str), None, None)?;
+                            dict.set_item(column_name, json_str)?;
                         }
                         // Array Types (basic support)
                         else if let Ok(str_array) = row.try_get::<Vec<String>, _>(i) {
