@@ -17,13 +17,10 @@ use dashmap::DashMap;
 use futures::future::join_all;
 use pyo3::{prelude::*, types::PyDict};
 use std::{
-    collections::HashMap,
-    sync::{
+    collections::HashMap, sync::{
         atomic::Ordering::{Relaxed, SeqCst},
         RwLock,
-    },
-    thread,
-    time::Duration,
+    }, thread, time::Duration
 };
 use std::{
     process::exit,
@@ -57,8 +54,8 @@ pub struct Server {
     websocket_router: Arc<WebsocketRouter>,
     startup_handler: Option<Arc<FunctionInfo>>,
     shutdown_handler: Option<Arc<FunctionInfo>>,
-    injected: DependencyInjection,
-    middlewares: Middleware,
+    injected: Arc<DependencyInjection>,
+    middlewares: Arc<Middleware>,
     extra_headers: Arc<DashMap<String, String>>,
     auto_compression: bool,
     database_config: Option<DatabaseConfig>,
@@ -70,8 +67,8 @@ pub struct Server {
 impl Server {
     #[new]
     pub fn new() -> Self {
-        let inject = DependencyInjection::new();
-        let middlewares = Middleware::new().unwrap();
+        let inject = Arc::new(DependencyInjection::new());
+        let middlewares = Arc::new(Middleware::new());
         Self {
             router: Arc::new(RwLock::new(Router::default())),
             websocket_router: Arc::new(WebsocketRouter::default()),
@@ -101,15 +98,15 @@ impl Server {
     }
 
     pub fn set_injected(&mut self, injected: Py<PyDict>) {
-        self.injected = DependencyInjection::from_object(injected);
+        self.injected = Arc::new(DependencyInjection::from_object(injected));
     }
 
     pub fn set_before_hooks(&mut self, hooks: Vec<(FunctionInfo, MiddlewareConfig)>) {
-        self.middlewares.set_before_hooks(hooks);
+        Arc::get_mut(&mut self.middlewares).unwrap().set_before_hooks(hooks);
     }
 
     pub fn set_after_hooks(&mut self, hooks: Vec<(FunctionInfo, MiddlewareConfig)>) {
-        self.middlewares.set_after_hooks(hooks);
+        Arc::get_mut(&mut self.middlewares).unwrap().set_after_hooks(hooks);
     }
 
     pub fn set_response_headers(&mut self, headers: HashMap<String, String>) {
@@ -162,22 +159,21 @@ impl Server {
         }
 
         let raw_socket = socket.try_borrow_mut()?.get_socket();
-
-        let router = self.router.clone();
-        let websocket_router = self.websocket_router.clone();
-
         let asyncio = py.import("asyncio")?;
         let event_loop = asyncio.call_method0("get_event_loop")?;
+
+        let router = Arc::clone(&self.router);
+        let websocket_router = Arc::clone(&self.websocket_router);
 
         let startup_handler = self.startup_handler.clone();
         let shutdown_handler = self.shutdown_handler.clone();
 
-        let task_locals = pyo3_asyncio::TaskLocals::new(event_loop).copy_context(py)?;
-        let task_locals_copy = task_locals.clone();
+        let task_locals = Arc::new(pyo3_asyncio::TaskLocals::new(event_loop).copy_context(py)?);
+        let task_local_copy= Arc::clone(&task_locals);
 
-        let injected = self.injected.clone();
-        let copy_middlewares = self.middlewares.clone();
-        let extra_headers = self.extra_headers.clone();
+        let injected = Arc::clone(&self.injected);
+        let copy_middlewares = Arc::clone(&self.middlewares);
+        let extra_headers = Arc::clone(&self.extra_headers);
         let auto_compression = self.auto_compression;
         let database_config = self.database_config.clone();
         let mem_pool_min_capacity = self.mem_pool_min_capacity;
@@ -202,21 +198,21 @@ impl Server {
             rt.block_on(async move {
                 create_mem_pool(mem_pool_min_capacity, mem_pool_max_capacity);
 
-                let _ = execute_startup_handler(startup_handler, &task_locals_copy).await;
+                let _ = execute_startup_handler(startup_handler, &Arc::clone(&task_locals)).await;
 
                 let mut app = RouterServer::new();
 
                 // handle logic for each route with pyo3
                 for route in router.read().unwrap().iter() {
-                    let task_locals_copy = task_locals_copy.clone();
+                    let task_locals = Arc::clone(&task_locals);
                     let function = route.function.clone();
-                    let copy_middlewares = copy_middlewares.clone();
-                    let extra_headers = extra_headers.as_ref().clone();
+                    let copy_middlewares = Arc::clone(&copy_middlewares);
+                    let extra_headers = Arc::clone(&extra_headers);
                     let handler = move |req| {
                         mapping_method(
                             req,
                             function,
-                            task_locals_copy,
+                            task_locals,
                             copy_middlewares,
                             extra_headers,
                         )
@@ -283,9 +279,9 @@ impl Server {
             if let Some(function) = shutdown_handler {
                 if function.is_async {
                     pyo3_asyncio::tokio::run_until_complete(
-                        task_locals.event_loop(py),
+                        task_local_copy.event_loop(py),
                         pyo3_asyncio::into_future_with_locals(
-                            &task_locals.clone(),
+                            &task_local_copy.clone(),
                             function.handler.as_ref(py).call0()?,
                         )
                         .unwrap(),
@@ -305,12 +301,12 @@ impl Server {
 async fn execute_request(
     req: HttpRequest<Body>,
     function: FunctionInfo,
-    middlewares: Middleware,
-    extra_headers: DashMap<String, String>,
+    middlewares: Arc<Middleware>,
+    extra_headers: Arc<DashMap<String, String>>,
 ) -> ServerResponse {
     let response_builder = ServerResponse::builder();
 
-    let deps = req.extensions().get::<DependencyInjection>().cloned();
+    let deps = req.extensions().get::<Arc<DependencyInjection>>().cloned();
     let database = get_sql_connect();
 
     let mut request = Request::from_request(req).await;
@@ -366,6 +362,8 @@ async fn execute_request(
         }
     }
 
+    println!("Request: {:?}", deps);
+
     // Execute the main handler
     let mut response = execute_http_function(&request, &function, deps)
         .await
@@ -419,12 +417,12 @@ async fn execute_request(
 async fn mapping_method(
     req: HttpRequest<Body>,
     function: FunctionInfo,
-    task_locals: pyo3_asyncio::TaskLocals,
-    middlewares: Middleware,
-    extra_headers: DashMap<String, String>,
+    task_locals: Arc<pyo3_asyncio::TaskLocals>,
+    middlewares: Arc<Middleware>,
+    extra_headers: Arc<DashMap<String, String>>,
 ) -> impl IntoResponse {
     pyo3_asyncio::tokio::scope(
-        task_locals,
+        task_locals.as_ref().to_owned(),
         execute_request(req, function, middlewares, extra_headers),
     )
     .await
