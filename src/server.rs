@@ -209,33 +209,33 @@ impl Server {
                 // handle logic for each route with pyo3
                 for route in router.read().unwrap().iter() {
                     let task_locals_copy = task_locals_copy.clone();
-                    let route_copy = route.clone();
-                    let function = route_copy.function.clone();
-
-                    let copy_middlewares_clone = copy_middlewares.clone();
+                    let function = route.function.clone();
+                    let copy_middlewares = copy_middlewares.clone();
                     let extra_headers = extra_headers.as_ref().clone();
                     let handler = move |req| {
                         mapping_method(
                             req,
                             function,
-                            task_locals_copy.clone(),
-                            copy_middlewares_clone.clone(),
-                            extra_headers.clone(),
+                            task_locals_copy,
+                            copy_middlewares,
+                            extra_headers,
                         )
                     };
 
-                    app = match route.method.as_str() {
-                        "GET" => app.route(&route.path, get(handler)),
-                        "POST" => app.route(&route.path, post(handler)),
-                        "PUT" => app.route(&route.path, put(handler)),
-                        "DELETE" => app.route(&route.path, delete(handler)),
-                        "PATCH" => app.route(&route.path, patch(handler)),
-                        "HEAD" => app.route(&route.path, head(handler)),
-                        "OPTIONS" => app.route(&route.path, options(handler)),
-                        "TRACE" => app.route(&route.path, trace(handler)),
-                        // Handle any custom methods using the any() method
-                        _ => app.route(&route.path, any(handler)),
-                    };
+                    app = app.route(
+                        &route.path,
+                        match route.method.as_str() {
+                            "GET" => get(handler),
+                            "POST" => post(handler),
+                            "PUT" => put(handler),
+                            "DELETE" => delete(handler),
+                            "PATCH" => patch(handler),
+                            "HEAD" => head(handler),
+                            "OPTIONS" => options(handler),
+                            "TRACE" => trace(handler),
+                            _ => any(handler),
+                        },
+                    );
                 }
 
                 // handle logic for each websocket route with pyo3
