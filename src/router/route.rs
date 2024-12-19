@@ -1,11 +1,5 @@
-use std::sync::Arc;
-
-use crate::types::function_info::FunctionInfo;
-use lazy_static::lazy_static;
-use parking_lot::RwLock;
 use pyo3::prelude::*;
-
-use super::{cache::RouteCache, radix::RadixTree};
+use crate::types::function_info::FunctionInfo;
 
 #[pyclass]
 #[derive(Debug, Clone)]
@@ -18,60 +12,17 @@ pub struct Route {
 
     #[pyo3(get, set)]
     pub method: String,
-
-    #[pyo3(get, set)]
-    pub normalized_path: String,
-}
-
-// Add static route cache
-lazy_static! {
-    static ref ROUTE_CACHE: RouteCache = RouteCache::new(1000, 3600); // 1000 entries, 1 hour TTL
-    static ref RADIX_TREE: Arc<RwLock<RadixTree>> = Arc::new(RwLock::new(RadixTree::new()));
 }
 
 #[pymethods]
 impl Route {
     #[new]
     pub fn new(path: &str, function: FunctionInfo, method: String) -> Self {
-        let normalized = Self::_normalize_path(path);
-        let route = Self {
+        Self {
             path: path.to_string(),
-            normalized_path: normalized.clone(),
             function,
-            method: method.to_uppercase(),
-        };
-
-        // Add to radix tree
-        RADIX_TREE.write().insert(route.clone());
-
-        route
-    }
-
-    pub fn matches(&self, path: &str, method: &str) -> bool {
-        // Try cache first
-        let cache_key = format!("{}:{}", method, path);
-        if let Some(_) = ROUTE_CACHE.get(&cache_key) {
-            return true;
+            method
         }
-
-        // Try radix tree
-        let normalized_path = Self::_normalize_path(path);
-        if let Some(matched_route) = RADIX_TREE.read().find(&normalized_path, method) {
-            // Cache the result
-            ROUTE_CACHE.insert(cache_key, matched_route);
-            return true;
-        }
-
-        false
-    }
-
-    #[staticmethod]
-    fn _normalize_path(path: &str) -> String {
-        let mut normalized = path.trim_end_matches('/').to_string();
-        if !normalized.starts_with('/') {
-            normalized = format!("/{}", normalized);
-        }
-        normalized
     }
 
     // Get a formatted string representation of the route
@@ -81,10 +32,13 @@ impl Route {
 
     // Get a formatted representation for debugging
     pub fn __repr__(&self) -> PyResult<String> {
-        Ok(format!(
-            "Route(path='{}', method='{}')",
-            self.path, self.method
-        ))
+        Ok(format!("Route(path='{}', method='{}')", 
+            self.path, self.method))
+    }
+
+    // Check if route matches given path and method
+    pub fn matches(&self, path: &str, method: &str) -> bool {
+        self.path == path && self.method.to_uppercase() == method.to_uppercase()
     }
 
     // Create a copy of the route
@@ -147,8 +101,8 @@ impl Route {
         // Try to extract other as Route
         if let Ok(other_route) = other.extract::<PyRef<Route>>() {
             // Compare only path and method, not the function
-            Ok(self.path == other_route.path
-                && self.method.to_uppercase() == other_route.method.to_uppercase())
+            Ok(self.path == other_route.path && 
+               self.method.to_uppercase() == other_route.method.to_uppercase())
         } else {
             Ok(false)
         }
@@ -158,7 +112,7 @@ impl Route {
     fn __hash__(&self) -> PyResult<isize> {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
-
+        
         let mut hasher = DefaultHasher::new();
         self.path.hash(&mut hasher);
         self.method.to_uppercase().hash(&mut hasher);
@@ -181,7 +135,7 @@ impl Route {
             "DELETE" => 5,
             "HEAD" => 6,
             "OPTIONS" => 7,
-            _ => 99,
+            _ => 99
         }
     }
 
@@ -192,49 +146,16 @@ impl Route {
             if self.path.len() != other_route.path.len() {
                 return Ok(self.path.len() < other_route.path.len());
             }
-
+            
             // Then by path string
             if self.path != other_route.path {
                 return Ok(self.path < other_route.path);
             }
-
+            
             // Finally by method priority
             Ok(self.get_method_priority() < other_route.get_method_priority())
         } else {
             Ok(false)
         }
-    }
-}
-
-impl Route {
-    pub fn optimize_path_matching(&mut self) {
-        // Pre-compile path patterns
-        if self.has_parameters() {
-            self.compile_path_pattern();
-        }
-
-        // Ensure path is normalized
-        self.normalized_path = Self::_normalize_path(&self.path);
-
-        // Update radix tree
-        RADIX_TREE.write().insert(self.clone());
-    }
-
-    fn compile_path_pattern(&mut self) {
-        let segments: Vec<&str> = self.path.split('/').filter(|s| !s.is_empty()).collect();
-
-        let pattern: String = segments
-            .iter()
-            .map(|&s| {
-                if s.starts_with(':') {
-                    "([^/]+)".to_string()
-                } else {
-                    regex::escape(s)
-                }
-            })
-            .collect::<Vec<_>>()
-            .join("/");
-
-        self.normalized_path = format!("^/{}/?$", pattern);
     }
 }
