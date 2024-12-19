@@ -437,7 +437,7 @@ class ArrayField(Field):
 class ForeignKey(Field):
     """Foreign key field representing a relationship to another model."""
 
-    def __init__(self, to_model: str, on_delete: str = "CASCADE", on_update: str = "CASCADE", **kwargs):
+    def __init__(self, to_model: str, related_field: str, on_delete: str = "CASCADE", on_update: str = "CASCADE", **kwargs):
         """
         Initialize a foreign key field.
 
@@ -455,6 +455,7 @@ class ForeignKey(Field):
         self.to_model = to_model
         self.on_delete = on_delete
         self.on_update = on_update
+        self.related_field = related_field
 
     def to_py_type(self, value: Any) -> Optional[int]:
         """

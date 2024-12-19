@@ -1,5 +1,6 @@
 from enum import Enum
 from typing import Any, Dict, List, Tuple, Union
+from hypern.db.sql.field import ForeignKey
 
 
 class JoinType(Enum):
@@ -98,7 +99,7 @@ class F:
     """Class for creating SQL expressions and column references"""
 
     def __init__(self, field: str):
-        self.field = field.replace("__", ".")  # Handle Django-style field references
+        self.field = field.replace("__", ".")
 
     def __add__(self, other):
         if isinstance(other, F):
@@ -356,6 +357,7 @@ class QuerySet:
         self._nowait = False
         self._skip_locked = False
         self._param_counter = 1
+        self._selected_related = set()
 
     def __get_next_param(self):
         param_name = f"${self._param_counter}"
@@ -372,11 +374,12 @@ class QuerySet:
         new_qs._nowait = self._nowait
         new_qs._skip_locked = self._skip_locked
         new_qs._param_counter = self._param_counter
+        new_qs._selected_related = self._selected_related.copy()
         return new_qs
 
     def select(self, *fields, distinct: bool = False) -> "QuerySet":
         qs = self.clone()
-        qs.query_parts["select"] = list(fields)
+        qs.query_parts["select"] = list(map(lambda x: f"{qs.model.Meta.table_name}.{x}" if x != "*" else x, fields))
         qs._distinct = distinct
         return qs
 
@@ -426,10 +429,10 @@ class QuerySet:
         return self._process_standard_value(field, op, value)
 
     def _process_f_value(self, field: str, op: str, value: F) -> Tuple[str, List]:
-        return f"{field} {op} {value.field}", []
+        return f"{self.model.Meta.table_name}.{field} {op} {value.field}", []
 
     def _process_expression_value(self, field: str, op: str, value: Expression) -> Tuple[str, List]:
-        return f"{field} {op} {value.sql}", value.params
+        return f"{self.model.Meta.table_name}.{field} {op} {value.sql}", value.params
 
     def _process_standard_value(self, field: str, op: str, value: Any) -> Tuple[str, List]:
         op_map = {
@@ -453,25 +456,26 @@ class QuerySet:
             return self._process_op_map_value(field, op, value, op_map)
         else:
             param_name = self.__get_next_param()
-            return f"{field} = {param_name}", [value]
+            return f"{self.model.Meta.table_name}.{field} = {param_name}", [value]
 
     def _process_op_map_value(self, field: str, op: str, value: Any, op_map: dict) -> Tuple[str, List]:
         param_name = self.__get_next_param()
+        combine_field_name = f"{self.model.Meta.table_name}.{field}"
         if op in ("contains", "icontains"):
-            return f"{field} {op_map[op]} {param_name}", [f"%{value}%"]
+            return f"{combine_field_name} {op_map[op]} {param_name}", [f"%{value}%"]
         elif op == "startswith":
-            return f"{field} {op_map[op]} {param_name}", [f"{value}%"]
+            return f"{combine_field_name} {op_map[op]} {param_name}", [f"{value}%"]
         elif op == "endswith":
-            return f"{field} {op_map[op]} {param_name}", [f"%{value}"]
+            return f"{combine_field_name} {op_map[op]} {param_name}", [f"%{value}"]
         elif op == "isnull":
-            return f"{field} {Operator.IS_NULL.value if value else Operator.IS_NOT_NULL.value}", []
+            return f"{combine_field_name} {Operator.IS_NULL.value if value else Operator.IS_NOT_NULL.value}", []
         elif op == "between":
-            return f"{field} {op_map[op]} {param_name} AND {param_name}", [value[0], value[1]]
+            return f"{combine_field_name} {op_map[op]} {param_name} AND {param_name}", [value[0], value[1]]
         elif op in ("in", "not_in"):
             placeholders = ",".join(["{param_name}" for _ in value])
-            return f"{field} {op_map[op]} ({placeholders})", list(value)
+            return f"{combine_field_name} {op_map[op]} ({placeholders})", list(value)
         else:
-            return f"{field} {op_map[op]} {param_name}", [value]
+            return f"{combine_field_name} {op_map[op]} {param_name}", [value]
 
     def where(self, *args, **kwargs) -> "QuerySet":
         qs = self.clone()
@@ -535,22 +539,36 @@ class QuerySet:
             elif field.startswith("-"):
                 order_parts.append(f"{field[1:]} DESC")
             else:
-                order_parts.append(f"{field} ASC")
+                order_parts.append(f"{qs.model.Meta.table_name}.{field} ASC")
 
         qs.query_parts["order_by"] = order_parts
         return qs
 
-    def join(self, table: str, on: Union[str, Expression], join_type: Union[str, JoinType] = JoinType.INNER) -> "QuerySet":
+    def select_related(self, *fields) -> "QuerySet":
+        """
+        Include related objects in the query results.
+
+        Args:
+            *fields: Names of foreign key fields to include
+        """
         qs = self.clone()
+        for field in fields:
+            if field in qs.model._fields and isinstance(qs.model._fields[field], ForeignKey):
+                qs._selected_related.add(field)
+        return qs
+
+    def join(self, table: Any, on: Union[str, Expression], join_type: Union[str, JoinType] = JoinType.INNER) -> "QuerySet":
+        qs = self.clone()
+        joined_table = table.Meta.table_name if hasattr(table, "Meta") else table
 
         if isinstance(join_type, JoinType):
             join_type = join_type.value
 
         if isinstance(on, Expression):
-            qs.query_parts["joins"].append(f"{join_type} {table} ON {on.sql}")
+            qs.query_parts["joins"].append(f"{join_type} {joined_table} ON {on.sql}")
             qs.params.extend(on.params)
         else:
-            qs.query_parts["joins"].append(f"{join_type} {table} ON {on}")
+            qs.query_parts["joins"].append(f"{join_type} {joined_table} ON {on}")
 
         return qs
 
@@ -565,7 +583,7 @@ class QuerySet:
                 group_parts.append(field.sql)
                 qs.params.extend(field.params)
             else:
-                group_parts.append(str(field))
+                group_parts.append(f"{qs.model.Meta.table_name}.{field}")
 
         qs.query_parts["group_by"] = group_parts
         return qs
@@ -607,7 +625,7 @@ class QuerySet:
                 partition_parts.append(field.sql)
                 qs.params.extend(field.params)
             else:
-                partition_parts.append(str(field))
+                partition_parts.append(f"{self.model.Meta.table_name}.{field}")
         return f"PARTITION BY {', '.join(partition_parts)}"
 
     def _process_order_by(self, order_by: List, qs: "QuerySet") -> str:
@@ -619,9 +637,9 @@ class QuerySet:
                 order_parts.append(field.sql)
                 qs.params.extend(field.params)
             elif field.startswith("-"):
-                order_parts.append(f"{field[1:]} DESC")
+                order_parts.append(f"{qs.model.Meta.table_name}.{field[1:]} DESC")
             else:
-                order_parts.append(f"{field} ASC")
+                order_parts.append(f"{qs.model.Meta.table_name}.{field} ASC")
         return f"ORDER BY {', '.join(order_parts)}"
 
     def limit(self, limit: int) -> "QuerySet":
@@ -726,7 +744,14 @@ class QuerySet:
         select_clause = "SELECT"
         if self._distinct:
             select_clause += " DISTINCT"
-        select_clause += " " + ", ".join(self.query_parts["select"])
+
+        # Add selected fields
+        select_related_fields = []
+        for field in self._selected_related:
+            related_table = self.model._fields[field].to_model
+            select_related_fields.append(f"{related_table}.*")
+
+        select_clause += " " + ", ".join(self.query_parts["select"] + select_related_fields)
         parts.append(select_clause)
 
     def _add_from_clause(self, parts):
