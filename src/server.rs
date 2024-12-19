@@ -341,7 +341,7 @@ async fn execute_request(
     for result in before_results {
         match result {
             Ok(MiddlewareReturn::Request(r)) => request = r,
-            Ok(MiddlewareReturn::Response(r)) => return r.to_axum_response(extra_headers),
+            Ok(MiddlewareReturn::Response(r)) => return r.to_axum_response(&extra_headers),
             Err(e) => {
                 return response_builder
                     .body(Body::from(format!("Error: {}", e)))
@@ -355,7 +355,7 @@ async fn execute_request(
         if config.is_conditional {
             match execute_middleware_function(&request, &middleware).await {
                 Ok(MiddlewareReturn::Request(r)) => request = r,
-                Ok(MiddlewareReturn::Response(r)) => return r.to_axum_response(extra_headers),
+                Ok(MiddlewareReturn::Response(r)) => return r.to_axum_response(&extra_headers),
                 Err(e) => {
                     return ServerResponse::builder()
                         .status(StatusCode::INTERNAL_SERVER_ERROR)
@@ -413,7 +413,7 @@ async fn execute_request(
         remove_sql_session(&response.context_id);
     }
 
-    response.to_axum_response(extra_headers)
+    response.to_axum_response(&extra_headers)
 }
 
 async fn mapping_method(
