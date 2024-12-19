@@ -373,13 +373,13 @@ async fn execute_request(
     response.context_id = request.context_id;
 
     // mapping neaded header request to response
-    response.headers.set(
-        "accept-encoding".to_string(),
-        request
-            .headers
-            .get("accept-encoding".to_string())
-            .unwrap_or_default(),
-    );
+    // response.headers.set(
+    //     "accept-encoding".to_string(),
+    //     request
+    //         .headers
+    //         .get("accept-encoding".to_string())
+    //         .unwrap_or_default(),
+    // );
 
     // Execute after middlewares with similar optimization
     for (after_middleware, _) in middlewares.get_after_hooks() {
